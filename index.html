@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mon Planning</title>
+<meta name="theme-color" content="#11161F">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mon Planning">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__mark">●</div>
+  <div class="topbar__text">
+    <h1>Mon Planning</h1>
+    <p id="todaySummary">Importez une photo pour commencer</p>
+  </div>
+</header>
+
+<main class="screen">
+
+  <!-- STEP 1 : IMPORT -->
+  <section class="card" id="cardImport">
+    <h2 class="card__eyebrow">01 — Photo</h2>
+    <div class="dropzone" id="dropzone">
+      <img id="preview" alt="Aperçu du planning" hidden>
+      <div class="dropzone__empty" id="dropzoneEmpty">
+        <span class="dropzone__icon">📋</span>
+        <p>Aucune photo importée</p>
+      </div>
+    </div>
+
+    <div class="row">
+      <label class="btn btn--primary" for="cameraInput">
+        Prendre une photo
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
+      </label>
+      <label class="btn btn--ghost" for="galleryInput">
+        Choisir depuis la galerie
+        <input type="file" id="galleryInput" accept="image/*" hidden>
+      </label>
+    </div>
+
+    <div class="field">
+      <label for="targetName">Nom à détecter</label>
+      <input type="text" id="targetName" value="MALICK" autocapitalize="characters">
+    </div>
+
+    <button class="btn btn--accent btn--full" id="analyzeBtn" disabled>Analyser la photo</button>
+
+    <div class="progress" id="ocrProgress" hidden>
+      <div class="progress__bar" id="ocrProgressBar"></div>
+      <p class="progress__label" id="ocrProgressLabel">Lecture en cours…</p>
+    </div>
+  </section>
+
+  <!-- STEP 2 : RESULTAT OCR -->
+  <section class="card" id="cardResult" hidden>
+    <h2 class="card__eyebrow">02 — Horaires détectés</h2>
+    <p class="hint">Vérifiez et corrigez si besoin avant de générer le calendrier.</p>
+    <div class="schedule" id="scheduleList"></div>
+    <button class="btn btn--ghost btn--full" id="addDayBtn">+ Ajouter un jour</button>
+  </section>
+
+  <!-- STEP 3 : REGLAGES REVEIL -->
+  <section class="card" id="cardSettings" hidden>
+    <h2 class="card__eyebrow">03 — Réveil</h2>
+    <div class="field-grid">
+      <div class="field">
+        <label for="prepTime">Préparation (min)</label>
+        <input type="number" id="prepTime" min="0" value="60">
+      </div>
+      <div class="field">
+        <label for="travelTime">Trajet (min)</label>
+        <input type="number" id="travelTime" min="0" value="30">
+      </div>
+      <div class="field">
+        <label for="marginTime">Marge sécurité (min)</label>
+        <input type="number" id="marginTime" min="0" value="10">
+      </div>
+    </div>
+    <div class="schedule" id="wakeList"></div>
+  </section>
+
+  <!-- STEP 4 : CALENDRIER -->
+  <section class="card" id="cardCalendar" hidden>
+    <h2 class="card__eyebrow">04 — Calendrier</h2>
+    <p class="hint">Le fichier .ics ajoute vos prises de poste et une alerte à l'heure de réveil calculée.</p>
+    <button class="btn btn--accent btn--full" id="downloadIcsBtn">Télécharger le calendrier .ics</button>
+    <button class="btn btn--ghost btn--full" id="notifBtn">Activer les rappels de réveil</button>
+    <p class="notice" id="notifNotice">Sur iPhone, les notifications d'une app web ne sont pas fiables. Préférez toujours l'export .ics dans Calendrier.</p>
+  </section>
+
+  <!-- STEP 5 : VERIF DU JOUR -->
+  <section class="card" id="cardCheck">
+    <h2 class="card__eyebrow">Vérification</h2>
+    <button class="btn btn--primary btn--full" id="checkTodayBtn">Vérifier mon planning du jour</button>
+    <div id="checkResult" class="check-result"></div>
+  </section>
+
+  <!-- HISTORIQUE -->
+  <section class="card" id="cardHistory">
+    <h2 class="card__eyebrow">Historique</h2>
+    <div id="historyList" class="history"></div>
+  </section>
+
+</main>
+
+<canvas id="ocrCanvas" hidden></canvas>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
