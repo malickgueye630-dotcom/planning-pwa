@@ -46,12 +46,40 @@
       </label>
     </div>
 
+    <div class="row" id="cropRow" hidden>
+      <button class="btn btn--ghost btn--full" id="cropBtn">Recadrer sur ma ligne MALICK</button>
+    </div>
+    <p class="crop-status" id="cropStatus" hidden>
+      Zone recadrée active. <button id="cropResetBtn" class="link-btn">Revenir à la photo entière</button>
+    </p>
+
+    <!-- CROP OVERLAY -->
+    <div class="cropper" id="cropper" hidden>
+      <p class="hint">Faites glisser un rectangle autour de la ligne MALICK, puis validez.</p>
+      <div class="cropper__stage" id="cropperStage">
+        <img id="cropperImage" alt="Photo à recadrer">
+        <div class="cropper__selection" id="cropperSelection" hidden></div>
+      </div>
+      <div class="row">
+        <button class="btn btn--ghost" id="cropCancelBtn">Annuler</button>
+        <button class="btn btn--accent" id="cropConfirmBtn" disabled>Valider le recadrage</button>
+      </div>
+    </div>
+
     <div class="field">
       <label for="targetName">Nom à détecter</label>
       <input type="text" id="targetName" value="MALICK" autocapitalize="characters">
     </div>
 
+    <div class="field">
+      <label class="checkbox-field">
+        <input type="checkbox" id="enhanceToggle" checked>
+        Améliorer l'image avant lecture (zoom, contraste, netteté)
+      </label>
+    </div>
+
     <button class="btn btn--accent btn--full" id="analyzeBtn" disabled>Analyser la photo</button>
+    <button class="btn btn--ghost btn--full" id="manualModeBtn">Mode manuel rapide (sans OCR)</button>
 
     <div class="progress" id="ocrProgress" hidden>
       <div class="progress__bar" id="ocrProgressBar"></div>

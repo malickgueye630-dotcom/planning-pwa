@@ -15,7 +15,9 @@ let state = {
   wakes: []       // [{day, wake, start}]
 };
 
-let currentImageDataUrl = null;
+let currentImageDataUrl = null;   // full original photo (data URL)
+let cropImageDataUrl = null;      // cropped region, if user cropped (data URL)
+let cropDragState = null;         // active pointer-drag info while drawing a selection
 
 /* ---------- DOM ---------- */
 const $ = (id) => document.getElementById(id);
@@ -26,7 +28,19 @@ const els = {
   cameraInput: $("cameraInput"),
   galleryInput: $("galleryInput"),
   targetName: $("targetName"),
+  enhanceToggle: $("enhanceToggle"),
   analyzeBtn: $("analyzeBtn"),
+  manualModeBtn: $("manualModeBtn"),
+  cropRow: $("cropRow"),
+  cropBtn: $("cropBtn"),
+  cropStatus: $("cropStatus"),
+  cropResetBtn: $("cropResetBtn"),
+  cropper: $("cropper"),
+  cropperStage: $("cropperStage"),
+  cropperImage: $("cropperImage"),
+  cropperSelection: $("cropperSelection"),
+  cropCancelBtn: $("cropCancelBtn"),
+  cropConfirmBtn: $("cropConfirmBtn"),
   ocrProgress: $("ocrProgress"),
   ocrProgressBar: $("ocrProgressBar"),
   ocrProgressLabel: $("ocrProgressLabel"),
@@ -68,6 +82,11 @@ els.cameraInput.addEventListener("change", (e) => handleImage(e.target.files[0])
 els.galleryInput.addEventListener("change", (e) => handleImage(e.target.files[0]));
 
 els.analyzeBtn.addEventListener("click", runOcr);
+els.manualModeBtn.addEventListener("click", startManualMode);
+els.cropBtn.addEventListener("click", openCropper);
+els.cropResetBtn.addEventListener("click", resetCrop);
+els.cropCancelBtn.addEventListener("click", closeCropper);
+els.cropConfirmBtn.addEventListener("click", confirmCrop);
 els.addDayBtn.addEventListener("click", () => {
   state.schedule.push({ day: "Lundi", type: "work", start: "09:00", end: "17:00" });
   renderSchedule();
@@ -85,12 +104,236 @@ function handleImage(file) {
   const reader = new FileReader();
   reader.onload = (e) => {
     currentImageDataUrl = e.target.result;
+    cropImageDataUrl = null;
     els.preview.src = currentImageDataUrl;
     els.preview.hidden = false;
     els.dropzoneEmpty.hidden = true;
     els.analyzeBtn.disabled = false;
+    els.cropRow.hidden = false;
+    els.cropStatus.hidden = true;
   };
   reader.readAsDataURL(file);
+}
+
+/* ---------- CROP (recadrage manuel) ---------- */
+function openCropper() {
+  els.cropperImage.src = currentImageDataUrl;
+  els.cropperSelection.hidden = true;
+  els.cropConfirmBtn.disabled = true;
+  els.cropper.hidden = false;
+  els.cropper.scrollIntoView({ behavior: "smooth", block: "center" });
+  attachCropperEvents();
+}
+
+function closeCropper() {
+  els.cropper.hidden = true;
+  detachCropperEvents();
+}
+
+function resetCrop() {
+  cropImageDataUrl = null;
+  els.preview.src = currentImageDataUrl;
+  els.cropStatus.hidden = true;
+}
+
+function attachCropperEvents() {
+  const stage = els.cropperStage;
+  stage.addEventListener("pointerdown", onCropPointerDown);
+  stage.addEventListener("pointermove", onCropPointerMove);
+  window.addEventListener("pointerup", onCropPointerUp);
+}
+
+function detachCropperEvents() {
+  const stage = els.cropperStage;
+  stage.removeEventListener("pointerdown", onCropPointerDown);
+  stage.removeEventListener("pointermove", onCropPointerMove);
+  window.removeEventListener("pointerup", onCropPointerUp);
+  cropDragState = null;
+}
+
+function onCropPointerDown(e) {
+  const rect = els.cropperStage.getBoundingClientRect();
+  cropDragState = {
+    startX: clamp(e.clientX - rect.left, 0, rect.width),
+    startY: clamp(e.clientY - rect.top, 0, rect.height),
+    rect,
+  };
+  els.cropperSelection.hidden = false;
+  els.cropConfirmBtn.disabled = true;
+  updateSelectionBox(cropDragState.startX, cropDragState.startY, 0, 0);
+}
+
+function onCropPointerMove(e) {
+  if (!cropDragState) return;
+  const { rect, startX, startY } = cropDragState;
+  const x = clamp(e.clientX - rect.left, 0, rect.width);
+  const y = clamp(e.clientY - rect.top, 0, rect.height);
+  const left = Math.min(startX, x);
+  const top = Math.min(startY, y);
+  const w = Math.abs(x - startX);
+  const h = Math.abs(y - startY);
+  updateSelectionBox(left, top, w, h);
+}
+
+function onCropPointerUp() {
+  if (!cropDragState) return;
+  const box = readSelectionBox();
+  els.cropConfirmBtn.disabled = !(box.width > 12 && box.height > 12);
+  cropDragState = null;
+}
+
+function updateSelectionBox(left, top, w, h) {
+  els.cropperSelection.style.left = left + "px";
+  els.cropperSelection.style.top = top + "px";
+  els.cropperSelection.style.width = w + "px";
+  els.cropperSelection.style.height = h + "px";
+}
+
+function readSelectionBox() {
+  return {
+    left: parseFloat(els.cropperSelection.style.left) || 0,
+    top: parseFloat(els.cropperSelection.style.top) || 0,
+    width: parseFloat(els.cropperSelection.style.width) || 0,
+    height: parseFloat(els.cropperSelection.style.height) || 0,
+  };
+}
+
+function clamp(v, min, max) {
+  return Math.max(min, Math.min(max, v));
+}
+
+function confirmCrop() {
+  const box = readSelectionBox();
+  if (box.width < 12 || box.height < 12) return;
+
+  const stageRect = els.cropperStage.getBoundingClientRect();
+  const img = els.cropperImage;
+  const scaleX = img.naturalWidth / stageRect.width;
+  const scaleY = img.naturalHeight / stageRect.height;
+
+  const sx = box.left * scaleX;
+  const sy = box.top * scaleY;
+  const sw = box.width * scaleX;
+  const sh = box.height * scaleY;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = sw;
+  canvas.height = sh;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  cropImageDataUrl = canvas.toDataURL("image/png");
+  els.preview.src = cropImageDataUrl;
+  els.cropStatus.hidden = false;
+  closeCropper();
+}
+
+/* ---------- IMAGE PREPROCESSING ---------- */
+/**
+ * Upscale, grayscale, boost contrast and sharpen the source image to make
+ * a small/dense/blurry printed table more legible for Tesseract.
+ * Returns a <canvas> ready to be passed straight to Tesseract.recognize().
+ */
+function preprocessImage(sourceDataUrl, scale = 3) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const w = Math.round(img.naturalWidth * scale);
+        const h = Math.round(img.naturalHeight * scale);
+
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const imageData = ctx.getImageData(0, 0, w, h);
+        grayscaleAndContrast(imageData.data);
+        ctx.putImageData(imageData, 0, 0);
+
+        sharpenCanvas(ctx, w, h);
+
+        resolve(canvas);
+      } catch (err) {
+        reject(err);
+      }
+    };
+    img.onerror = reject;
+    img.src = sourceDataUrl;
+  });
+}
+
+function grayscaleAndContrast(data) {
+  // First pass: grayscale + find min/max luminance.
+  let min = 255, max = 0;
+  const lum = new Uint8ClampedArray(data.length / 4);
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    const g = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+    lum[p] = g;
+    if (g < min) min = g;
+    if (g > max) max = g;
+  }
+
+  const range = Math.max(1, max - min);
+  const contrastBoost = 1.35; // extra punch beyond pure stretch
+
+  for (let i = 0, p = 0; i < data.length; i += 4, p++) {
+    let v = ((lum[p] - min) / range) * 255;
+    v = clamp((v - 128) * contrastBoost + 128, 0, 255);
+    data[i] = data[i + 1] = data[i + 2] = v;
+  }
+}
+
+function sharpenCanvas(ctx, w, h) {
+  const src = ctx.getImageData(0, 0, w, h);
+  const dst = ctx.createImageData(w, h);
+  const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+  const sData = src.data;
+  const dData = dst.data;
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const idx = (y * w + x) * 4;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) {
+        dData[idx] = sData[idx];
+        dData[idx + 1] = sData[idx + 1];
+        dData[idx + 2] = sData[idx + 2];
+        dData[idx + 3] = 255;
+        continue;
+      }
+      let sum = 0;
+      let k = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const nIdx = ((y + ky) * w + (x + kx)) * 4;
+          sum += sData[nIdx] * kernel[k];
+          k++;
+        }
+      }
+      const v = clamp(sum, 0, 255);
+      dData[idx] = dData[idx + 1] = dData[idx + 2] = v;
+      dData[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(dst, 0, 0);
+}
+
+/* ---------- MANUAL MODE ---------- */
+function startManualMode() {
+  state.targetName = els.targetName.value.trim().toUpperCase() || "MALICK";
+  state.schedule = defaultEditableWeek();
+  saveState();
+  renderSchedule();
+  els.cardResult.hidden = false;
+  els.cardSettings.hidden = false;
+  els.cardCalendar.hidden = false;
+  els.checkResult.textContent = "Mode manuel : saisissez vos horaires jour par jour ci-dessous.";
+  recalcWakes();
+  refreshTodaySummary();
+  els.cardResult.scrollIntoView({ behavior: "smooth" });
 }
 
 /* ---------- OCR ---------- */
@@ -100,15 +343,21 @@ async function runOcr() {
 
   els.analyzeBtn.disabled = true;
   els.ocrProgress.hidden = false;
-  setProgress(0, "Initialisation…");
+  setProgress(0, "Préparation de l'image…");
 
   try {
-    const result = await Tesseract.recognize(currentImageDataUrl, "fra", {
+    const baseImage = cropImageDataUrl || currentImageDataUrl;
+    const enhance = els.enhanceToggle.checked;
+    const ocrSource = enhance ? await preprocessImage(baseImage, 3) : baseImage;
+
+    setProgress(10, "Initialisation…");
+
+    const result = await Tesseract.recognize(ocrSource, "fra", {
       logger: (m) => {
         if (m.status === "recognizing text") {
-          setProgress(Math.round(m.progress * 100), "Lecture en cours…");
+          setProgress(10 + Math.round(m.progress * 85), "Lecture en cours…");
         } else if (m.status) {
-          setProgress(0, capitalize(m.status) + "…");
+          setProgress(10, capitalize(m.status) + "…");
         }
       },
     });
@@ -116,13 +365,22 @@ async function runOcr() {
     setProgress(100, "Analyse du texte…");
     const text = result.data.text;
     const parsed = parsePlanning(text, state.targetName);
+    const confidence = assessConfidence(parsed);
 
     if (parsed.length === 0) {
       els.checkResult.textContent =
-        `Le nom "${state.targetName}" n'a pas été détecté avec certitude. ` +
-        `Vous pouvez ajouter les jours manuellement ci-dessous.`;
-      state.schedule = defaultEmptyWeek();
+        `Le nom "${state.targetName}" n'a pas été détecté avec certitude sur cette image. ` +
+        `Une semaine vierge est affichée ci-dessous : complétez-la manuellement, ou essayez ` +
+        `"Recadrer sur ma ligne MALICK" pour zoomer sur la bonne ligne avant de relancer l'analyse.`;
+      state.schedule = defaultEditableWeek();
+    } else if (!confidence.reliable) {
+      els.checkResult.textContent =
+        `"${state.targetName}" a été repéré, mais plusieurs horaires sont incertains ` +
+        `(${confidence.missing} jour(s) sans heure claire). Vérifiez et complétez la semaine ` +
+        `ci-dessous avant de générer le calendrier.`;
+      state.schedule = parsed;
     } else {
+      els.checkResult.textContent = "";
       state.schedule = parsed;
     }
 
@@ -137,11 +395,22 @@ async function runOcr() {
     els.cardResult.scrollIntoView({ behavior: "smooth" });
   } catch (err) {
     console.error(err);
-    els.checkResult.textContent = "Erreur pendant la lecture de l'image. Réessayez avec une photo plus nette.";
+    els.checkResult.textContent = "Erreur pendant la lecture de l'image. Réessayez avec une photo plus nette, ou utilisez le mode manuel rapide.";
   } finally {
     els.ocrProgress.hidden = true;
     els.analyzeBtn.disabled = false;
   }
+}
+
+/**
+ * Heuristic confidence check: a "work" day with no readable start time
+ * counts as missing. If too many days are missing, the OCR result is
+ * surfaced as an editable (not silently REPOS) week so the user corrects it.
+ */
+function assessConfidence(parsed) {
+  if (parsed.length === 0) return { reliable: false, missing: 7 };
+  const missing = parsed.filter((d) => d.type === "work" && !d.start).length;
+  return { reliable: missing <= 1, missing };
 }
 
 function setProgress(pct, label) {
@@ -265,8 +534,8 @@ function toTime(token) {
   return `${h}:${min}`;
 }
 
-function defaultEmptyWeek() {
-  return DAYS.map((d) => ({ day: d, type: "repos", start: "", end: "" }));
+function defaultEditableWeek() {
+  return DAYS.map((d) => ({ day: d, type: "work", start: "", end: "" }));
 }
 
 /* ---------- RENDER SCHEDULE ---------- */
