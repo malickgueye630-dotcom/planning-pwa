@@ -352,6 +352,24 @@ body{
   color: var(--text-dim);
 }
 
+/* TRAVEL / GOOGLE MAPS */
+.travel-key{
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.travel-key summary{
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--accent);
+  font-weight: 600;
+  list-style: none;
+}
+.travel-key summary::-webkit-details-marker{ display:none; }
+.travel-key summary::before{
+  content: "⚙ ";
+}
+
 .notice{
   font-size: 0.78rem;
   color: var(--text-dim);

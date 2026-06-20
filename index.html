@@ -95,9 +95,46 @@
     <button class="btn btn--ghost btn--full" id="addDayBtn">+ Ajouter un jour</button>
   </section>
 
-  <!-- STEP 3 : REGLAGES REVEIL -->
+  <!-- STEP 3 : TRAJET (GOOGLE MAPS) -->
+  <section class="card" id="cardTravel" hidden>
+    <h2 class="card__eyebrow">03 — Trajet</h2>
+    <p class="hint">Calculez votre temps de trajet domicile → travail avec Google Maps. Le résultat remplit automatiquement le champ « Trajet » du réveil.</p>
+
+    <div class="field">
+      <label for="originInput">Adresse de départ (domicile)</label>
+      <input type="text" id="originInput" placeholder="Ex : 12 rue de la Paix, 75002 Paris" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="destInput">Adresse d'arrivée (travail)</label>
+      <input type="text" id="destInput" placeholder="Ex : 5 avenue Anatole France, 75007 Paris" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="travelMode">Mode de transport</label>
+      <select id="travelMode">
+        <option value="DRIVING">Voiture</option>
+        <option value="TRANSIT">Transports en commun</option>
+        <option value="WALKING">À pied</option>
+        <option value="BICYCLING">Vélo</option>
+      </select>
+    </div>
+
+    <button class="btn btn--accent btn--full" id="calcTravelBtn">Calculer le temps de trajet</button>
+    <p class="check-result" id="travelResult"></p>
+
+    <details class="travel-key">
+      <summary>Clé API Google Maps</summary>
+      <p class="hint">À renseigner une seule fois. Collez votre clé Google Maps (API « Maps JavaScript » activée). Elle est enregistrée uniquement sur cet appareil et n'est jamais envoyée ailleurs.</p>
+      <div class="field">
+        <label for="mapsKeyInput">Clé API</label>
+        <input type="password" id="mapsKeyInput" placeholder="AIza…" autocomplete="off">
+      </div>
+      <p class="hint"><a class="link-btn" href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Obtenir une clé Google Maps →</a></p>
+    </details>
+  </section>
+
+  <!-- STEP 4 : REGLAGES REVEIL -->
   <section class="card" id="cardSettings" hidden>
-    <h2 class="card__eyebrow">03 — Réveil</h2>
+    <h2 class="card__eyebrow">04 — Réveil</h2>
     <div class="field-grid">
       <div class="field">
         <label for="prepTime">Préparation (min)</label>
@@ -115,9 +152,9 @@
     <div class="schedule" id="wakeList"></div>
   </section>
 
-  <!-- STEP 4 : CALENDRIER -->
+  <!-- STEP 5 : CALENDRIER -->
   <section class="card" id="cardCalendar" hidden>
-    <h2 class="card__eyebrow">04 — Calendrier</h2>
+    <h2 class="card__eyebrow">05 — Calendrier</h2>
     <p class="hint">Le fichier .ics ajoute vos prises de poste et une alerte à l'heure de réveil calculée.</p>
     <button class="btn btn--accent btn--full" id="downloadIcsBtn">Télécharger le calendrier .ics</button>
     <button class="btn btn--ghost btn--full" id="notifBtn">Activer les rappels de réveil</button>

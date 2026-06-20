@@ -105,7 +105,38 @@ Une fois l'URL https ouverte dans **Safari** sur iPhone :
    sont sauvegardés localement (`localStorage`) — rien n'est perdu en
    refermant l'app.
 
-## 6. Limites connues sur iPhone
+## 6. Calcul du trajet avec Google Maps
+
+La carte **03 — Trajet** calcule automatiquement votre temps de trajet
+domicile → travail et remplit le champ **Trajet (min)** utilisé pour l'heure
+de réveil. Pour la voiture, le temps tient compte du **trafic actuel**.
+
+### Obtenir une clé API Google Maps (une seule fois)
+
+1. Ouvrez [Google Cloud Console — Maps](https://console.cloud.google.com/google/maps-apis/start).
+2. Créez un projet, puis activez l'API **« Maps JavaScript API »**.
+3. Activez la **facturation** sur le projet (Google offre un crédit mensuel
+   gratuit qui couvre largement un usage personnel).
+4. Créez une **clé API** (Identifiants → Créer des identifiants → Clé API).
+5. Recommandé : restreignez la clé à votre domaine (référents HTTP), par
+   exemple `https://votre-utilisateur.github.io/*`, pour éviter qu'elle soit
+   réutilisée ailleurs.
+
+### Utilisation
+
+1. Dépliez **« Clé API Google Maps »** dans la carte Trajet et collez votre clé.
+   Elle est enregistrée **uniquement sur cet appareil** (`localStorage`), jamais
+   envoyée à un serveur tiers autre que Google.
+2. Saisissez l'**adresse de départ** (domicile) et l'**adresse d'arrivée**
+   (travail), choisissez le **mode de transport** (voiture, transports, à pied,
+   vélo).
+3. Appuyez sur **« Calculer le temps de trajet »** : le champ **Trajet (min)**
+   se met à jour et les heures de réveil sont recalculées.
+
+> Si vous changez de clé API après un premier calcul, **rechargez la page** :
+> Google Maps ne peut être chargé qu'une fois par ouverture de page.
+
+## 7. Limites connues sur iPhone
 
 - **Pas de vrai réveil natif.** Une PWA ne peut pas créer une alarme dans
   l'app Horloge d'iPhone. La solution fiable proposée ici est l'**alerte
