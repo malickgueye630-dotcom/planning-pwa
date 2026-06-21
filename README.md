@@ -105,38 +105,42 @@ Une fois l'URL https ouverte dans **Safari** sur iPhone :
    sont sauvegardés localement (`localStorage`) — rien n'est perdu en
    refermant l'app.
 
-## 6. Calcul du trajet avec OpenStreetMap (100 % gratuit, sans clé)
+## 6. Calcul du trajet avec OpenStreetMap (gratuit, sans carte bancaire)
 
 La carte **« Trajet »** calcule automatiquement votre temps de trajet
 domicile → travail et remplit le champ **Trajet (min)** utilisé pour l'heure
-de réveil. Aucune clé API, aucun compte, aucune carte bancaire : tout repose
-sur des services publics et gratuits de l'écosystème **OpenStreetMap**.
+de réveil.
 
-- **Géocodage** (adresse → coordonnées) : [Nominatim](https://nominatim.org/).
-- **Calcul d'itinéraire** (durée, distance) : serveurs publics
-  [OSRM](https://project-osrm.org/) hébergés par la communauté FOSSGIS, un par
-  mode de transport (voiture, vélo, piéton).
+- **Voiture / vélo / à pied** : 100 % gratuit, sans clé API, sans compte.
+  - **Géocodage** (adresse → coordonnées) : [Nominatim](https://nominatim.org/).
+  - **Calcul d'itinéraire** : serveurs publics [OSRM](https://project-osrm.org/)
+    hébergés par la communauté FOSSGIS, un par mode de transport.
+- **Transports en commun (métro, RER, bus...)** : gratuit également, mais
+  nécessite une **clé API [Navitia](https://navitia.io)** — inscription par
+  email, sans carte bancaire. C'est la seule façon d'obtenir des trajets en
+  transport en commun sans dépendre d'un service payant comme Google Maps.
 - **Carte interactive** : [Leaflet](https://leafletjs.com/) avec les fonds de
   carte OpenStreetMap.
 
 ### Utilisation
 
 1. Saisissez l'**adresse de départ** (domicile) et l'**adresse d'arrivée**
-   (travail), choisissez le **mode de transport** (voiture, vélo, à pied).
-2. Appuyez sur **« Calculer le temps de trajet »** : le champ **Trajet (min)**
+   (travail), choisissez le **mode de transport**.
+2. Si vous choisissez **Transports en commun**, collez votre clé Navitia
+   gratuite dans le champ qui apparaît (récupérée sur navitia.io après
+   inscription) — elle reste enregistrée uniquement sur votre appareil.
+3. Appuyez sur **« Calculer le temps de trajet »** : le champ **Trajet (min)**
    se met à jour, les heures de réveil sont recalculées, et l'itinéraire
    s'affiche sur une carte.
 
 ### Limites de la solution gratuite
 
-- Les **transports en commun** ne sont pas proposés : il n'existe pas de
-  service public gratuit de routage transit sans clé API couvrant tous les
-  pays. Le mode voiture/vélo/piéton reste entièrement gratuit et illimité
-  pour un usage personnel.
 - Les services publics Nominatim/OSRM ont une politique d'usage raisonnable
   (l'app respecte un court délai entre les requêtes). Pour un usage intensif
   ou collectif, on peut héberger sa propre instance OSRM/Nominatim, mais ce
   n'est pas nécessaire pour un usage personnel quotidien.
+- La clé Navitia gratuite a aussi une limite d'usage raisonnable (largement
+  suffisante pour un usage personnel quotidien).
 
 ## 7. Limites connues sur iPhone
 

@@ -193,6 +193,13 @@ a{ color: var(--accent); }
   color: var(--text-dim);
   line-height: 1.5;
 }
+.field-note{
+  margin: 6px 0 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+.field-note a{ color: var(--accent); }
 
 /* ===========================================================
    DROPZONE

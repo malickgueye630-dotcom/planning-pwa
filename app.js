@@ -13,7 +13,8 @@ let state = {
   margin: 10,
   origin: "",        // home address
   dest: "",          // work address
-  mode: "DRIVING",   // DRIVING | WALKING | BICYCLING
+  mode: "DRIVING",   // DRIVING | WALKING | BICYCLING | TRANSIT
+  navitiaKey: "",    // free Navitia API key, only needed for TRANSIT mode
   schedule: [],   // [{day, type, start, end}]
   wakes: []       // [{day, wake, start}]
 };
@@ -54,6 +55,8 @@ const els = {
   originInput: $("originInput"),
   destInput: $("destInput"),
   travelMode: $("travelMode"),
+  navitiaKeyField: $("navitiaKeyField"),
+  navitiaKeyInput: $("navitiaKeyInput"),
   calcTravelBtn: $("calcTravelBtn"),
   travelResult: $("travelResult"),
   travelMapWrap: $("travelMapWrap"),
@@ -108,7 +111,15 @@ els.marginTime.addEventListener("input", recalcWakes);
 
 els.originInput.addEventListener("change", () => { state.origin = els.originInput.value.trim(); saveState(); });
 els.destInput.addEventListener("change", () => { state.dest = els.destInput.value.trim(); saveState(); });
-els.travelMode.addEventListener("change", () => { state.mode = els.travelMode.value; saveState(); });
+els.travelMode.addEventListener("change", () => {
+  state.mode = els.travelMode.value;
+  saveState();
+  updateNavitiaFieldVisibility();
+});
+els.navitiaKeyInput.addEventListener("change", () => {
+  state.navitiaKey = els.navitiaKeyInput.value.trim();
+  saveState();
+});
 els.calcTravelBtn.addEventListener("click", calcTravel);
 els.downloadIcsBtn.addEventListener("click", downloadIcs);
 els.notifBtn.addEventListener("click", enableNotifications);
@@ -877,6 +888,54 @@ async function fetchRoute(mode, origin, dest) {
   return data.routes[0]; // { duration (s), distance (m), geometry (GeoJSON) }
 }
 
+/* ---------- TRAJET (TRANSPORTS EN COMMUN — Navitia, clé gratuite) ----------
+ * Navitia (navitia.io) est le seul moyen gratuit de calculer un trajet en
+ * transport en commun (métro, RER, bus...) sans dépendre de Google. Il
+ * nécessite une clé API gratuite (inscription par email, sans carte
+ * bancaire) — contrairement à la voiture/vélo/piéton qui ne demandent rien.
+ */
+function updateNavitiaFieldVisibility() {
+  els.navitiaKeyField.hidden = els.travelMode.value !== "TRANSIT";
+}
+
+function formatNavitiaDatetime(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return (
+    date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) +
+    "T" + pad(date.getHours()) + pad(date.getMinutes()) + pad(date.getSeconds())
+  );
+}
+
+async function fetchTransitRoute(origin, dest, apiKey) {
+  if (!apiKey) throw new Error("TRANSIT_NO_KEY");
+  // Using the origin's coordinates as the Navitia "region" lets it
+  // auto-resolve the right coverage area instead of hard-coding Paris.
+  const region = `${origin.lon};${origin.lat}`;
+  const datetime = formatNavitiaDatetime(new Date());
+  const url =
+    `https://api.navitia.io/v1/coverage/${encodeURIComponent(region)}/journeys` +
+    `?from=${origin.lon};${origin.lat}&to=${dest.lon};${dest.lat}` +
+    `&datetime=${datetime}&count=1`;
+  const res = await fetch(url, { headers: { Authorization: "Basic " + btoa(apiKey + ":") } });
+  if (res.status === 401 || res.status === 403) throw new Error("TRANSIT_BAD_KEY");
+  if (!res.ok) throw new Error("TRANSIT_HTTP");
+  const data = await res.json();
+  const journey = data.journeys && data.journeys[0];
+  if (!journey) throw new Error("TRANSIT_NOT_FOUND");
+  return journey; // { duration (s), sections: [...] }
+}
+
+function journeyToGeometry(journey) {
+  const coordinates = [];
+  for (const section of journey.sections || []) {
+    const geo = section.geojson;
+    if (!geo || !geo.coordinates) continue;
+    if (geo.type === "LineString") coordinates.push(...geo.coordinates);
+    else if (geo.type === "MultiLineString") geo.coordinates.forEach((line) => coordinates.push(...line));
+  }
+  return coordinates.length >= 2 ? { type: "LineString", coordinates } : null;
+}
+
 function setTravelLoading(loading) {
   els.calcTravelBtn.disabled = loading;
   els.calcTravelBtn.classList.toggle("btn--loading", loading);
@@ -912,6 +971,22 @@ async function calcTravel() {
       destPt = await geocodeAddress(dest);
     } catch (e) {
       throw new Error("GEOCODE_DEST");
+    }
+
+    if (mode === "TRANSIT") {
+      const journey = await fetchTransitRoute(originPt, destPt, state.navitiaKey);
+      const minutes = Math.max(1, Math.round(journey.duration / 60));
+      els.travelTime.value = minutes;
+      state.travel = minutes;
+      saveState();
+      recalcWakes();
+
+      els.travelResult.textContent =
+        `Trajet en transports en commun : ${formatDuration(minutes)}. ` +
+        `Le champ « Trajet » du réveil est passé à ${minutes} min.`;
+
+      renderTravelMap(originPt, destPt, journeyToGeometry(journey));
+      return;
     }
 
     let route;
@@ -959,6 +1034,14 @@ function travelErrorMessage(code) {
       return "Adresse d'arrivée introuvable. Précisez-la (numéro, ville, code postal).";
     case "ROUTE_FAILED":
       return "Aucun itinéraire trouvé entre ces deux adresses pour ce mode de transport.";
+    case "TRANSIT_NO_KEY":
+      return "Ajoutez votre clé Navitia gratuite (champ ci-dessus) pour activer les transports en commun.";
+    case "TRANSIT_BAD_KEY":
+      return "Clé Navitia invalide ou expirée. Vérifiez la clé collée dans le champ ci-dessus.";
+    case "TRANSIT_NOT_FOUND":
+      return "Aucun trajet en transports en commun trouvé entre ces deux adresses.";
+    case "TRANSIT_HTTP":
+      return "Impossible de contacter le service de transports en commun. Réessayez plus tard.";
     default:
       return "Impossible de calculer le trajet. Vérifiez votre connexion internet et réessayez.";
   }
@@ -989,7 +1072,16 @@ function renderTravelMap(originPt, destPt, geometry) {
     travelMapLayer.remove();
   }
 
-  const line = L.geoJSON(geometry, { style: { color: "#F5A524", weight: 4 } });
+  // Transit journeys without a usable route shape (e.g. missing geojson on
+  // a Navitia section) fall back to a straight dashed line between the two
+  // points, so the map and duration are still shown.
+  const line = geometry
+    ? L.geoJSON(geometry, { style: { color: "#F5A524", weight: 4 } })
+    : L.polyline([[originPt.lat, originPt.lon], [destPt.lat, destPt.lon]], {
+        color: "#F5A524",
+        weight: 3,
+        dashArray: "6 8",
+      });
   const originMarker = L.marker([originPt.lat, originPt.lon]);
   const destMarker = L.marker([destPt.lat, destPt.lon]);
   travelMapLayer = L.layerGroup([line, originMarker, destMarker]).addTo(map);
@@ -1231,9 +1323,10 @@ function loadState() {
     els.marginTime.value = state.margin ?? 10;
     els.originInput.value = state.origin || "";
     els.destInput.value = state.dest || "";
-    els.travelMode.value = Object.prototype.hasOwnProperty.call(OSRM_PROFILES, state.mode)
-      ? state.mode
-      : "DRIVING";
+    els.navitiaKeyInput.value = state.navitiaKey || "";
+    const validModes = [...Object.keys(OSRM_PROFILES), "TRANSIT"];
+    els.travelMode.value = validModes.includes(state.mode) ? state.mode : "DRIVING";
+    updateNavitiaFieldVisibility();
     if (state.schedule && state.schedule.length > 0) {
       renderSchedule();
       els.cardResult.hidden = false;

@@ -146,7 +146,18 @@
         <option value="DRIVING">Voiture</option>
         <option value="BICYCLING">Vélo</option>
         <option value="WALKING">À pied</option>
+        <option value="TRANSIT">Transports en commun (métro, RER…)</option>
       </select>
+    </div>
+
+    <div class="field" id="navitiaKeyField" hidden>
+      <label for="navitiaKeyInput">Clé Navitia (transports en commun)</label>
+      <input type="password" id="navitiaKeyInput" placeholder="Collez votre clé gratuite ici" autocomplete="off">
+      <p class="field-note">
+        Nécessaire uniquement pour les transports en commun. Gratuite, sans carte bancaire :
+        créez un compte sur <a href="https://navitia.io" target="_blank" rel="noopener">navitia.io</a>,
+        récupérez votre clé par email, puis collez-la ici. Elle reste enregistrée uniquement sur votre appareil.
+      </p>
     </div>
 
     <button class="btn btn--accent btn--full" id="calcTravelBtn">

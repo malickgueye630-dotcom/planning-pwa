@@ -1,4 +1,4 @@
-const CACHE_NAME = "mon-planning-v4";
+const CACHE_NAME = "mon-planning-v5";
 const ASSETS = [
   "./",
   "./index.html",
