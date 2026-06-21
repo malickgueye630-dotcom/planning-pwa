@@ -11,10 +11,9 @@ let state = {
   prep: 60,
   travel: 30,
   margin: 10,
-  mapsKey: "",       // Google Maps API key (kept on-device only)
   origin: "",        // home address
   dest: "",          // work address
-  mode: "DRIVING",   // DRIVING | TRANSIT | WALKING | BICYCLING
+  mode: "DRIVING",   // DRIVING | WALKING | BICYCLING
   schedule: [],   // [{day, type, start, end}]
   wakes: []       // [{day, wake, start}]
 };
@@ -57,7 +56,8 @@ const els = {
   travelMode: $("travelMode"),
   calcTravelBtn: $("calcTravelBtn"),
   travelResult: $("travelResult"),
-  mapsKeyInput: $("mapsKeyInput"),
+  travelMapWrap: $("travelMapWrap"),
+  travelSource: $("travelSource"),
   cardSettings: $("cardSettings"),
   prepTime: $("prepTime"),
   travelTime: $("travelTime"),
@@ -109,7 +109,6 @@ els.marginTime.addEventListener("input", recalcWakes);
 els.originInput.addEventListener("change", () => { state.origin = els.originInput.value.trim(); saveState(); });
 els.destInput.addEventListener("change", () => { state.dest = els.destInput.value.trim(); saveState(); });
 els.travelMode.addEventListener("change", () => { state.mode = els.travelMode.value; saveState(); });
-els.mapsKeyInput.addEventListener("change", () => { state.mapsKey = els.mapsKeyInput.value.trim(); saveState(); });
 els.calcTravelBtn.addEventListener("click", calcTravel);
 els.downloadIcsBtn.addEventListener("click", downloadIcs);
 els.notifBtn.addEventListener("click", enableNotifications);
@@ -639,7 +638,9 @@ function renderSchedule() {
 
     const removeBtn = document.createElement("button");
     removeBtn.className = "day-row__remove";
-    removeBtn.textContent = "✕";
+    removeBtn.setAttribute("aria-label", "Supprimer ce jour");
+    removeBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
     removeBtn.addEventListener("click", () => {
       state.schedule.splice(idx, 1);
       saveState();
@@ -706,132 +707,166 @@ function renderWakes() {
   });
 }
 
-/* ---------- TRAJET (GOOGLE MAPS) ---------- */
-let mapsLoadPromise = null;   // resolves once the Maps JS API is ready
-let mapsLoadedKey = null;     // the API key the loaded script was built with
-
-function loadGoogleMaps(key) {
-  // Google Maps JS can only be loaded once per page with a fixed key.
-  if (mapsLoadPromise && mapsLoadedKey === key) return mapsLoadPromise;
-  if (mapsLoadPromise && mapsLoadedKey !== key) {
-    return Promise.reject(new Error("KEY_CHANGED"));
-  }
-
-  mapsLoadedKey = key;
-  mapsLoadPromise = new Promise((resolve, reject) => {
-    window.__onGmapsReady = () => resolve();
-    const script = document.createElement("script");
-    script.src =
-      "https://maps.googleapis.com/maps/api/js" +
-      "?key=" + encodeURIComponent(key) +
-      "&callback=__onGmapsReady&language=fr&region=FR";
-    script.async = true;
-    script.onerror = () => reject(new Error("SCRIPT_ERROR"));
-    document.head.appendChild(script);
-  });
-  return mapsLoadPromise;
-}
-
-// Google calls this global automatically when the API key is rejected.
-window.gm_authFailure = () => {
-  els.calcTravelBtn.disabled = false;
-  els.travelResult.textContent =
-    "Clé API Google Maps refusée. Vérifiez la clé, puis que l'API « Maps JavaScript » " +
-    "est activée et que la facturation est active sur votre projet Google Cloud. " +
-    "Après correction de la clé, rechargez la page.";
+/* ---------- TRAJET (OPENSTREETMAP — gratuit, sans clé API) ----------
+ * Géocodage : Nominatim (OpenStreetMap).
+ * Itinéraire : serveurs OSRM publics FOSSGIS (routing.openstreetmap.de),
+ * un par profil (voiture / vélo / piéton). Aucune clé, aucune carte
+ * bancaire, aucun compte requis.
+ */
+const OSRM_PROFILES = {
+  DRIVING: { base: "https://routing.openstreetmap.de/routed-car/route/v1/driving", label: "en voiture" },
+  BICYCLING: { base: "https://routing.openstreetmap.de/routed-bike/route/v1/bike", label: "à vélo" },
+  WALKING: { base: "https://routing.openstreetmap.de/routed-foot/route/v1/foot", label: "à pied" },
 };
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function geocodeAddress(query) {
+  const url =
+    "https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=0&q=" +
+    encodeURIComponent(query);
+  const res = await fetch(url, { headers: { "Accept-Language": "fr" } });
+  if (!res.ok) throw new Error("GEOCODE_HTTP");
+  const data = await res.json();
+  if (!data.length) throw new Error("GEOCODE_NOT_FOUND");
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
+}
+
+async function fetchRoute(mode, origin, dest) {
+  const profile = OSRM_PROFILES[mode];
+  const coords = `${origin.lon},${origin.lat};${dest.lon},${dest.lat}`;
+  const url = `${profile.base}/${coords}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("ROUTE_HTTP");
+  const data = await res.json();
+  if (data.code !== "Ok" || !data.routes || !data.routes.length) throw new Error("ROUTE_NOT_FOUND");
+  return data.routes[0]; // { duration (s), distance (m), geometry (GeoJSON) }
+}
+
+function setTravelLoading(loading) {
+  els.calcTravelBtn.disabled = loading;
+  els.calcTravelBtn.classList.toggle("btn--loading", loading);
+}
+
 async function calcTravel() {
-  const key = els.mapsKeyInput.value.trim();
   const origin = els.originInput.value.trim();
   const dest = els.destInput.value.trim();
   const mode = els.travelMode.value;
 
-  state.mapsKey = key;
   state.origin = origin;
   state.dest = dest;
   state.mode = mode;
   saveState();
 
-  if (!key) {
-    els.travelResult.textContent =
-      "Ajoutez d'abord votre clé API Google Maps (section « Clé API Google Maps » ci-dessous).";
-    return;
-  }
   if (!origin || !dest) {
     els.travelResult.textContent = "Renseignez l'adresse de départ et l'adresse d'arrivée.";
     return;
   }
 
-  els.calcTravelBtn.disabled = true;
+  setTravelLoading(true);
   els.travelResult.textContent = "Calcul du trajet en cours…";
 
   try {
-    await loadGoogleMaps(key);
-  } catch (err) {
-    els.calcTravelBtn.disabled = false;
-    els.travelResult.textContent =
-      err.message === "KEY_CHANGED"
-        ? "La clé API a changé. Rechargez la page pour utiliser la nouvelle clé."
-        : "Impossible de charger Google Maps. Vérifiez votre connexion internet.";
-    return;
-  }
-
-  const service = new google.maps.DirectionsService();
-  const request = {
-    origin,
-    destination: dest,
-    travelMode: google.maps.TravelMode[mode],
-  };
-  if (mode === "DRIVING") {
-    request.drivingOptions = { departureTime: new Date(), trafficModel: "bestguess" };
-  } else if (mode === "TRANSIT") {
-    request.transitOptions = { departureTime: new Date() };
-  }
-
-  service.route(request, (result, status) => {
-    els.calcTravelBtn.disabled = false;
-    if (status === "OK" && result.routes[0]) {
-      const leg = result.routes[0].legs[0];
-      const dur = leg.duration_in_traffic || leg.duration;
-      const minutes = Math.max(1, Math.round(dur.value / 60));
-      els.travelTime.value = minutes;
-      state.travel = minutes;
-      saveState();
-      recalcWakes();
-      const trafficNote = leg.duration_in_traffic ? " avec le trafic actuel" : "";
-      els.travelResult.textContent =
-        `Trajet ${labelForMode(mode)} : ${dur.text}${trafficNote} (${leg.distance.text}). ` +
-        `Le champ « Trajet » du réveil est passé à ${minutes} min.`;
-    } else {
-      els.travelResult.textContent = travelErrorMessage(status);
+    let originPt, destPt;
+    try {
+      originPt = await geocodeAddress(origin);
+    } catch (e) {
+      throw new Error("GEOCODE_ORIGIN");
     }
-  });
-}
+    await sleep(300); // reste courtois avec le service public Nominatim (≤1 req/s)
+    try {
+      destPt = await geocodeAddress(dest);
+    } catch (e) {
+      throw new Error("GEOCODE_DEST");
+    }
 
-function labelForMode(mode) {
-  switch (mode) {
-    case "DRIVING": return "en voiture";
-    case "TRANSIT": return "en transports en commun";
-    case "WALKING": return "à pied";
-    case "BICYCLING": return "à vélo";
-    default: return "";
+    let route;
+    try {
+      route = await fetchRoute(mode, originPt, destPt);
+    } catch (e) {
+      throw new Error("ROUTE_FAILED");
+    }
+
+    const minutes = Math.max(1, Math.round(route.duration / 60));
+    els.travelTime.value = minutes;
+    state.travel = minutes;
+    saveState();
+    recalcWakes();
+
+    const profile = OSRM_PROFILES[mode];
+    els.travelResult.textContent =
+      `Trajet ${profile.label} : ${formatDuration(minutes)} (${formatDistance(route.distance)}). ` +
+      `Le champ « Trajet » du réveil est passé à ${minutes} min.`;
+
+    renderTravelMap(originPt, destPt, route.geometry);
+  } catch (err) {
+    els.travelResult.textContent = travelErrorMessage(err.message);
+  } finally {
+    setTravelLoading(false);
   }
 }
 
-function travelErrorMessage(status) {
-  switch (status) {
-    case "ZERO_RESULTS":
+function formatDuration(minutes) {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+function formatDistance(meters) {
+  return meters >= 1000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters)} m`;
+}
+
+function travelErrorMessage(code) {
+  switch (code) {
+    case "GEOCODE_ORIGIN":
+      return "Adresse de départ introuvable. Précisez-la (numéro, ville, code postal).";
+    case "GEOCODE_DEST":
+      return "Adresse d'arrivée introuvable. Précisez-la (numéro, ville, code postal).";
+    case "ROUTE_FAILED":
       return "Aucun itinéraire trouvé entre ces deux adresses pour ce mode de transport.";
-    case "NOT_FOUND":
-      return "Une des deux adresses n'a pas été reconnue. Précisez-la (numéro, ville, code postal).";
-    case "OVER_QUERY_LIMIT":
-      return "Quota Google Maps dépassé pour aujourd'hui. Réessayez plus tard.";
-    case "REQUEST_DENIED":
-      return "Requête refusée par Google. Vérifiez que l'API « Directions » est activée pour votre clé.";
     default:
-      return "Trajet impossible à calculer (" + status + "). Vérifiez les adresses et réessayez.";
+      return "Impossible de calculer le trajet. Vérifiez votre connexion internet et réessayez.";
   }
+}
+
+/* ---------- CARTE (LEAFLET + OPENSTREETMAP) ---------- */
+let travelMap = null;
+let travelMapLayer = null;
+
+function ensureTravelMap() {
+  if (travelMap) return travelMap;
+  travelMap = L.map("travelMap", { zoomControl: true, attributionControl: true });
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap contributors",
+  }).addTo(travelMap);
+  travelMap.setView([46.6, 2.3], 5); // vue par défaut : France
+  return travelMap;
+}
+
+function renderTravelMap(originPt, destPt, geometry) {
+  const map = ensureTravelMap();
+  els.travelMapWrap.hidden = false;
+  els.travelSource.hidden = false;
+
+  if (travelMapLayer) {
+    travelMapLayer.clearLayers();
+    travelMapLayer.remove();
+  }
+
+  const line = L.geoJSON(geometry, { style: { color: "#F5A524", weight: 4 } });
+  const originMarker = L.marker([originPt.lat, originPt.lon]);
+  const destMarker = L.marker([destPt.lat, destPt.lon]);
+  travelMapLayer = L.layerGroup([line, originMarker, destMarker]).addTo(map);
+
+  // The map container can be measured incorrectly while it was `hidden`.
+  setTimeout(() => {
+    map.invalidateSize();
+    map.fitBounds(line.getBounds(), { padding: [28, 28] });
+  }, 50);
 }
 
 /* ---------- ICS EXPORT ---------- */
@@ -1062,10 +1097,11 @@ function loadState() {
     els.prepTime.value = state.prep ?? 60;
     els.travelTime.value = state.travel ?? 30;
     els.marginTime.value = state.margin ?? 10;
-    els.mapsKeyInput.value = state.mapsKey || "";
     els.originInput.value = state.origin || "";
     els.destInput.value = state.dest || "";
-    els.travelMode.value = state.mode || "DRIVING";
+    els.travelMode.value = Object.prototype.hasOwnProperty.call(OSRM_PROFILES, state.mode)
+      ? state.mode
+      : "DRIVING";
     if (state.schedule && state.schedule.length > 0) {
       renderSchedule();
       els.cardResult.hidden = false;

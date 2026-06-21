@@ -105,36 +105,38 @@ Une fois l'URL https ouverte dans **Safari** sur iPhone :
    sont sauvegardés localement (`localStorage`) — rien n'est perdu en
    refermant l'app.
 
-## 6. Calcul du trajet avec Google Maps
+## 6. Calcul du trajet avec OpenStreetMap (100 % gratuit, sans clé)
 
-La carte **03 — Trajet** calcule automatiquement votre temps de trajet
+La carte **« Trajet »** calcule automatiquement votre temps de trajet
 domicile → travail et remplit le champ **Trajet (min)** utilisé pour l'heure
-de réveil. Pour la voiture, le temps tient compte du **trafic actuel**.
+de réveil. Aucune clé API, aucun compte, aucune carte bancaire : tout repose
+sur des services publics et gratuits de l'écosystème **OpenStreetMap**.
 
-### Obtenir une clé API Google Maps (une seule fois)
-
-1. Ouvrez [Google Cloud Console — Maps](https://console.cloud.google.com/google/maps-apis/start).
-2. Créez un projet, puis activez l'API **« Maps JavaScript API »**.
-3. Activez la **facturation** sur le projet (Google offre un crédit mensuel
-   gratuit qui couvre largement un usage personnel).
-4. Créez une **clé API** (Identifiants → Créer des identifiants → Clé API).
-5. Recommandé : restreignez la clé à votre domaine (référents HTTP), par
-   exemple `https://votre-utilisateur.github.io/*`, pour éviter qu'elle soit
-   réutilisée ailleurs.
+- **Géocodage** (adresse → coordonnées) : [Nominatim](https://nominatim.org/).
+- **Calcul d'itinéraire** (durée, distance) : serveurs publics
+  [OSRM](https://project-osrm.org/) hébergés par la communauté FOSSGIS, un par
+  mode de transport (voiture, vélo, piéton).
+- **Carte interactive** : [Leaflet](https://leafletjs.com/) avec les fonds de
+  carte OpenStreetMap.
 
 ### Utilisation
 
-1. Dépliez **« Clé API Google Maps »** dans la carte Trajet et collez votre clé.
-   Elle est enregistrée **uniquement sur cet appareil** (`localStorage`), jamais
-   envoyée à un serveur tiers autre que Google.
-2. Saisissez l'**adresse de départ** (domicile) et l'**adresse d'arrivée**
-   (travail), choisissez le **mode de transport** (voiture, transports, à pied,
-   vélo).
-3. Appuyez sur **« Calculer le temps de trajet »** : le champ **Trajet (min)**
-   se met à jour et les heures de réveil sont recalculées.
+1. Saisissez l'**adresse de départ** (domicile) et l'**adresse d'arrivée**
+   (travail), choisissez le **mode de transport** (voiture, vélo, à pied).
+2. Appuyez sur **« Calculer le temps de trajet »** : le champ **Trajet (min)**
+   se met à jour, les heures de réveil sont recalculées, et l'itinéraire
+   s'affiche sur une carte.
 
-> Si vous changez de clé API après un premier calcul, **rechargez la page** :
-> Google Maps ne peut être chargé qu'une fois par ouverture de page.
+### Limites de la solution gratuite
+
+- Les **transports en commun** ne sont pas proposés : il n'existe pas de
+  service public gratuit de routage transit sans clé API couvrant tous les
+  pays. Le mode voiture/vélo/piéton reste entièrement gratuit et illimité
+  pour un usage personnel.
+- Les services publics Nominatim/OSRM ont une politique d'usage raisonnable
+  (l'app respecte un court délai entre les requêtes). Pour un usage intensif
+  ou collectif, on peut héberger sa propre instance OSRM/Nominatim, mais ce
+  n'est pas nécessaire pour un usage personnel quotidien.
 
 ## 7. Limites connues sur iPhone
 

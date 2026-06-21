@@ -4,18 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mon Planning</title>
-<meta name="theme-color" content="#11161F">
+<meta name="theme-color" content="#0A0D13">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mon Planning">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
 <header class="topbar">
-  <div class="topbar__mark">●</div>
+  <div class="topbar__mark">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l3 2"></path><path d="M9 3l-3 2M15 3l3 2"></path></svg>
+  </div>
   <div class="topbar__text">
     <h1>Mon Planning</h1>
     <p id="todaySummary">Importez une photo pour commencer</p>
@@ -26,28 +35,36 @@
 
   <!-- STEP 1 : IMPORT -->
   <section class="card" id="cardImport">
-    <h2 class="card__eyebrow">01 — Photo</h2>
+    <div class="card__head">
+      <div class="card__badge">1</div>
+      <h2 class="card__eyebrow">Photo du planning</h2>
+    </div>
     <div class="dropzone" id="dropzone">
       <img id="preview" alt="Aperçu du planning" hidden>
       <div class="dropzone__empty" id="dropzoneEmpty">
-        <span class="dropzone__icon">📋</span>
+        <svg class="dropzone__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="15" rx="2"></rect><circle cx="9" cy="11" r="2"></circle><path d="M21 16l-4.5-4.5a2 2 0 0 0-2.8 0L7 18"></path></svg>
         <p>Aucune photo importée</p>
       </div>
     </div>
 
     <div class="row">
       <label class="btn btn--primary" for="cameraInput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
         Prendre une photo
         <input type="file" id="cameraInput" accept="image/*" capture="environment" hidden>
       </label>
       <label class="btn btn--ghost" for="galleryInput">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg>
         Choisir depuis la galerie
         <input type="file" id="galleryInput" accept="image/*" hidden>
       </label>
     </div>
 
     <div class="row" id="cropRow" hidden>
-      <button class="btn btn--ghost btn--full" id="cropBtn">Recadrer sur ma ligne MALICK</button>
+      <button class="btn btn--ghost btn--full" id="cropBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"></path><path d="M18 22V8a2 2 0 0 0-2-2H2"></path></svg>
+        Recadrer sur ma ligne MALICK
+      </button>
     </div>
     <p class="crop-status" id="cropStatus" hidden>
       Zone recadrée active. <button id="cropResetBtn" class="link-btn">Revenir à la photo entière</button>
@@ -78,8 +95,14 @@
       </label>
     </div>
 
-    <button class="btn btn--accent btn--full" id="analyzeBtn" disabled>Analyser la photo</button>
-    <button class="btn btn--ghost btn--full" id="manualModeBtn">Mode manuel rapide (sans OCR)</button>
+    <button class="btn btn--accent btn--full" id="analyzeBtn" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4a7 7 0 1 0 4.9 11.9l4.1 4.1"></path><path d="M11 8v6M8 11h6"></path></svg>
+      Analyser la photo
+    </button>
+    <button class="btn btn--ghost btn--full" id="manualModeBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>
+      Mode manuel rapide (sans OCR)
+    </button>
 
     <div class="progress" id="ocrProgress" hidden>
       <div class="progress__bar" id="ocrProgressBar"></div>
@@ -89,16 +112,25 @@
 
   <!-- STEP 2 : RESULTAT OCR -->
   <section class="card" id="cardResult" hidden>
-    <h2 class="card__eyebrow">02 — Horaires détectés</h2>
+    <div class="card__head">
+      <div class="card__badge">2</div>
+      <h2 class="card__eyebrow">Horaires détectés</h2>
+    </div>
     <p class="hint">Vérifiez et corrigez si besoin avant de générer le calendrier.</p>
     <div class="schedule" id="scheduleList"></div>
-    <button class="btn btn--ghost btn--full" id="addDayBtn">+ Ajouter un jour</button>
+    <button class="btn btn--ghost btn--full" id="addDayBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"></path></svg>
+      Ajouter un jour
+    </button>
   </section>
 
-  <!-- STEP 3 : TRAJET (GOOGLE MAPS) -->
+  <!-- STEP 3 : TRAJET (OPENSTREETMAP) -->
   <section class="card" id="cardTravel" hidden>
-    <h2 class="card__eyebrow">03 — Trajet</h2>
-    <p class="hint">Calculez votre temps de trajet domicile → travail avec Google Maps. Le résultat remplit automatiquement le champ « Trajet » du réveil.</p>
+    <div class="card__head">
+      <div class="card__badge">3</div>
+      <h2 class="card__eyebrow">Trajet</h2>
+    </div>
+    <p class="hint">Calculez votre temps de trajet domicile → travail avec OpenStreetMap. Le résultat remplit automatiquement le champ « Trajet » du réveil.</p>
 
     <div class="field">
       <label for="originInput">Adresse de départ (domicile)</label>
@@ -112,29 +144,32 @@
       <label for="travelMode">Mode de transport</label>
       <select id="travelMode">
         <option value="DRIVING">Voiture</option>
-        <option value="TRANSIT">Transports en commun</option>
-        <option value="WALKING">À pied</option>
         <option value="BICYCLING">Vélo</option>
+        <option value="WALKING">À pied</option>
       </select>
     </div>
 
-    <button class="btn btn--accent btn--full" id="calcTravelBtn">Calculer le temps de trajet</button>
+    <button class="btn btn--accent btn--full" id="calcTravelBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="2"></circle><circle cx="18" cy="5" r="2"></circle><path d="M8 19h7a4 4 0 0 0 4-4 4 4 0 0 0-4-4H9a4 4 0 0 1-4-4 4 4 0 0 1 4-4h7"></path></svg>
+      Calculer le temps de trajet
+    </button>
     <p class="check-result" id="travelResult"></p>
 
-    <details class="travel-key">
-      <summary>Clé API Google Maps</summary>
-      <p class="hint">À renseigner une seule fois. Collez votre clé Google Maps (API « Maps JavaScript » activée). Elle est enregistrée uniquement sur cet appareil et n'est jamais envoyée ailleurs.</p>
-      <div class="field">
-        <label for="mapsKeyInput">Clé API</label>
-        <input type="password" id="mapsKeyInput" placeholder="AIza…" autocomplete="off">
-      </div>
-      <p class="hint"><a class="link-btn" href="https://console.cloud.google.com/google/maps-apis/start" target="_blank" rel="noopener">Obtenir une clé Google Maps →</a></p>
-    </details>
+    <div class="travel-map" id="travelMapWrap" hidden>
+      <div id="travelMap"></div>
+    </div>
+    <p class="travel-source" id="travelSource" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0l-.77.78-.77-.78a5.4 5.4 0 0 0-7.65 7.65l8.42 8.42 8.42-8.42a5.4 5.4 0 0 0 0-7.65z"></path></svg>
+      Itinéraire et carte fournis gratuitement par OpenStreetMap — aucune clé API, aucun coût.
+    </p>
   </section>
 
   <!-- STEP 4 : REGLAGES REVEIL -->
   <section class="card" id="cardSettings" hidden>
-    <h2 class="card__eyebrow">04 — Réveil</h2>
+    <div class="card__head">
+      <div class="card__badge">4</div>
+      <h2 class="card__eyebrow">Réveil</h2>
+    </div>
     <div class="field-grid">
       <div class="field">
         <label for="prepTime">Préparation (min)</label>
@@ -154,23 +189,41 @@
 
   <!-- STEP 5 : CALENDRIER -->
   <section class="card" id="cardCalendar" hidden>
-    <h2 class="card__eyebrow">05 — Calendrier</h2>
+    <div class="card__head">
+      <div class="card__badge">5</div>
+      <h2 class="card__eyebrow">Calendrier</h2>
+    </div>
     <p class="hint">Le fichier .ics ajoute vos prises de poste et une alerte à l'heure de réveil calculée.</p>
-    <button class="btn btn--accent btn--full" id="downloadIcsBtn">Télécharger le calendrier .ics</button>
-    <button class="btn btn--ghost btn--full" id="notifBtn">Activer les rappels de réveil</button>
+    <button class="btn btn--accent btn--full" id="downloadIcsBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path></svg>
+      Télécharger le calendrier .ics
+    </button>
+    <button class="btn btn--ghost btn--full" id="notifBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+      Activer les rappels de réveil
+    </button>
     <p class="notice" id="notifNotice">Sur iPhone, les notifications d'une app web ne sont pas fiables. Préférez toujours l'export .ics dans Calendrier.</p>
   </section>
 
-  <!-- STEP 5 : VERIF DU JOUR -->
+  <!-- STEP 6 : VERIF DU JOUR -->
   <section class="card" id="cardCheck">
-    <h2 class="card__eyebrow">Vérification</h2>
-    <button class="btn btn--primary btn--full" id="checkTodayBtn">Vérifier mon planning du jour</button>
+    <div class="card__head">
+      <div class="card__badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M20 6L9 17l-5-5"></path></svg></div>
+      <h2 class="card__eyebrow">Vérification</h2>
+    </div>
+    <button class="btn btn--primary btn--full" id="checkTodayBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9 12l2 2 4-4"></path></svg>
+      Vérifier mon planning du jour
+    </button>
     <div id="checkResult" class="check-result"></div>
   </section>
 
   <!-- HISTORIQUE -->
   <section class="card" id="cardHistory">
-    <h2 class="card__eyebrow">Historique</h2>
+    <div class="card__head">
+      <div class="card__badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l4 2"></path></svg></div>
+      <h2 class="card__eyebrow">Historique</h2>
+    </div>
     <div id="historyList" class="history"></div>
   </section>
 
@@ -179,6 +232,7 @@
 <canvas id="ocrCanvas" hidden></canvas>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
