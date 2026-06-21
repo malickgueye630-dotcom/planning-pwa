@@ -381,7 +381,8 @@ async function runOcr() {
 
     setProgress(100, "Analyse du texte…");
     const text = result.data.text;
-    const parsed = parsePlanning(text, state.targetName);
+    const fromGeometry = parsePlanningFromWords(result.data.blocks, state.targetName);
+    const parsed = fromGeometry || parsePlanning(text, state.targetName);
     const confidence = assessConfidence(parsed);
 
     if (parsed.length === 0) {
@@ -529,6 +530,137 @@ function extractDaysFromText(blockText) {
   }
 
   return result.filter((r) => r.day);
+}
+
+/* ---------- GEOMETRIC TABLE PARSING (word bounding boxes) ---------- */
+/**
+ * Plain OCR text from a dense, multi-employee schedule table interleaves
+ * rows and columns once flattened to a single string — this is why the
+ * line-based parser above can end up reading the wrong row entirely
+ * (e.g. every day showing REPOS). This rebuilds the grid from Tesseract's
+ * word-level bounding boxes instead: rows are clusters of words at the same
+ * height, columns are derived from the x-position of the day-name headers,
+ * and the target row is matched by name (with light fuzzy-matching since
+ * OCR often misreads 1-2 letters of a name on a blurry/angled photo).
+ */
+function flattenWords(blocks) {
+  const words = [];
+  for (const block of blocks || []) {
+    for (const para of block.paragraphs || []) {
+      for (const line of para.lines || []) {
+        for (const word of line.words || []) {
+          if (!word.text || !word.bbox) continue;
+          words.push({
+            text: word.text,
+            x: (word.bbox.x0 + word.bbox.x1) / 2,
+            y: (word.bbox.y0 + word.bbox.y1) / 2,
+            height: word.bbox.y1 - word.bbox.y0,
+          });
+        }
+      }
+    }
+  }
+  return words;
+}
+
+function clusterRows(words) {
+  if (words.length === 0) return [];
+  const sorted = [...words].sort((a, b) => a.y - b.y);
+  const heights = sorted.map((w) => w.height).filter((h) => h > 0).sort((a, b) => a - b);
+  const medianHeight = heights[Math.floor(heights.length / 2)] || 14;
+  const threshold = medianHeight * 0.7;
+
+  const rows = [];
+  let current = [sorted[0]];
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i].y - current[current.length - 1].y > threshold) {
+      rows.push(current);
+      current = [];
+    }
+    current.push(sorted[i]);
+  }
+  if (current.length) rows.push(current);
+  return rows.map((r) => r.sort((a, b) => a.x - b.x));
+}
+
+function editDistanceCapped(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 99;
+  const dp = [];
+  for (let i = 0; i <= a.length; i++) dp.push([i]);
+  for (let j = 1; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+function rowMatchesName(row, target) {
+  return row.some((w) => {
+    const norm = normalize(w.text);
+    if (norm.length < 3) return false;
+    if (norm.includes(target) || target.includes(norm)) return true;
+    return norm.length >= 4 && editDistanceCapped(norm, target) <= 1;
+  });
+}
+
+const DAY_PREFIXES = DAYS.map((d) => normalize(d).slice(0, 3));
+
+function findDayHeaderRow(rows) {
+  let best = null;
+  for (const row of rows) {
+    const hits = [];
+    for (const w of row) {
+      const norm = normalize(w.text);
+      const idx = DAY_PREFIXES.findIndex((p) => norm.startsWith(p));
+      if (idx !== -1 && !hits.some((h) => h.dayIndex === idx)) {
+        hits.push({ dayIndex: idx, x: w.x });
+      }
+    }
+    if (hits.length >= 5 && (!best || hits.length > best.length)) {
+      best = hits.sort((a, b) => a.x - b.x);
+    }
+  }
+  return best;
+}
+
+function parsePlanningFromWords(blocks, targetName) {
+  const words = flattenWords(blocks);
+  if (words.length === 0) return null;
+
+  const rows = clusterRows(words);
+  const headerHits = findDayHeaderRow(rows);
+  if (!headerHits) return null;
+
+  const target = normalize(targetName);
+  const targetRow = rows.find((row) => rowMatchesName(row, target));
+  if (!targetRow) return null;
+
+  // Column boundaries: midpoints between consecutive day headers. The
+  // first/last column stay open-ended so the name/role text to the left
+  // and any trailing "Total" column to the right are dropped rather than
+  // absorbed into Monday/Sunday.
+  const xs = headerHits.map((h) => h.x);
+  const boundaries = [-Infinity];
+  for (let i = 0; i < xs.length - 1; i++) boundaries.push((xs[i] + xs[i + 1]) / 2);
+  boundaries.push(Infinity);
+
+  const result = [];
+  for (let i = 0; i < headerHits.length; i++) {
+    const dayName = DAYS[headerHits[i].dayIndex];
+    const bucket = targetRow.filter((w) => w.x >= boundaries[i] && w.x < boundaries[i + 1]);
+    const chunk = bucket.map((w) => w.text).join(" ");
+    result.push(parseChunk(dayName, chunk));
+  }
+
+  // If the reconstruction still finds nothing usable, let the caller fall
+  // back to the flat-text parser instead of confidently returning an
+  // all-REPOS week.
+  const usable = result.some((r) => r.type !== "work" || r.start);
+  return usable ? result : null;
 }
 
 function parseChunk(dayName, chunk) {
