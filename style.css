@@ -122,6 +122,43 @@ a{ color: var(--accent); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.theme-toggle{
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition: border-color 160ms ease, color 160ms ease, background-color 160ms ease;
+}
+.theme-toggle:hover{ border-color: var(--border-strong); color: var(--text); }
+.theme-toggle svg{ width: 18px; height: 18px; }
+
+/* ===========================================================
+   LIGHT THEME
+   =========================================================== */
+html[data-theme="light"]{
+  --bg: #F5F6F8;
+  --bg-soft: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F0F1F4;
+  --surface-hover: #E7E9ED;
+  --border: rgba(15,19,27,0.09);
+  --border-strong: rgba(15,19,27,0.18);
+  --text: #11141A;
+  --text-dim: #5A6172;
+  --text-faint: #8A90A0;
+  color-scheme: light;
+}
+html[data-theme="light"] .topbar{
+  background: rgba(255,255,255,0.78);
+}
 
 /* ===========================================================
    LAYOUT
@@ -653,6 +690,59 @@ a{ color: var(--accent); }
 .history-item button:hover{ background: var(--accent-soft); }
 
 /* ===========================================================
+   STATS
+   =========================================================== */
+.stats-grid{
+  display:grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+.stat-tile{
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display:flex;
+  flex-direction:column;
+  gap: 4px;
+}
+.stat-tile__value{
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--accent);
+  letter-spacing: -0.02em;
+}
+.stat-tile__label{
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+/* ===========================================================
+   GOOGLE CALENDAR QUICK-ADD
+   =========================================================== */
+.gcal-intro{ margin-top: 16px; }
+.gcal-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.gcal-chip{
+  display:inline-flex;
+  align-items:center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 100px;
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+.gcal-chip:hover{ border-color: var(--border-strong); background: var(--surface-hover); }
+
+/* ===========================================================
    RESPONSIVE — tablette / desktop
    =========================================================== */
 @media (min-width: 760px){
@@ -665,7 +755,7 @@ a{ color: var(--accent); }
     gap: 20px;
   }
   #cardImport, #cardResult, #cardTravel, #cardCalendar{ grid-column: 1; }
-  #cardSettings, #cardCheck, #cardHistory{ grid-column: 2; }
+  #cardSettings, #cardStats, #cardCheck, #cardHistory{ grid-column: 2; }
   .topbar{ padding: 20px 28px; }
 }
 

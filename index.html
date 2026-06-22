@@ -29,6 +29,9 @@
     <h1>Mon Planning</h1>
     <p id="todaySummary">Importez une photo pour commencer</p>
   </div>
+  <button class="theme-toggle" id="themeToggleBtn" type="button" aria-label="Changer de thème">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path></svg>
+  </button>
 </header>
 
 <main class="screen">
@@ -214,6 +217,35 @@
       Activer les rappels de réveil
     </button>
     <p class="notice" id="notifNotice">Sur iPhone, les notifications d'une app web ne sont pas fiables. Préférez toujours l'export .ics dans Calendrier.</p>
+
+    <p class="hint gcal-intro">Ou ajoutez chaque jour directement à Google Calendar (aucune clé, aucun compte requis) :</p>
+    <div class="gcal-list" id="googleCalendarList" hidden></div>
+  </section>
+
+  <!-- STATISTIQUES -->
+  <section class="card" id="cardStats" hidden>
+    <div class="card__head">
+      <div class="card__badge"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;"><path d="M3 3v18h18"></path><path d="M18 9l-5 5-3-3-4 4"></path></svg></div>
+      <h2 class="card__eyebrow">Statistiques de la semaine</h2>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-tile">
+        <span class="stat-tile__value" id="statHours">—</span>
+        <span class="stat-tile__label">Heures travaillées</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-tile__value" id="statWorkDays">—</span>
+        <span class="stat-tile__label">Jours travaillés</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-tile__value" id="statRepos">—</span>
+        <span class="stat-tile__label">Jours de repos</span>
+      </div>
+      <div class="stat-tile">
+        <span class="stat-tile__value" id="statWake">—</span>
+        <span class="stat-tile__label">Réveil le plus tôt</span>
+      </div>
+    </div>
   </section>
 
   <!-- STEP 6 : VERIF DU JOUR -->
@@ -227,6 +259,12 @@
       Vérifier mon planning du jour
     </button>
     <div id="checkResult" class="check-result"></div>
+
+    <button class="btn btn--ghost btn--full" id="shareBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="M8.6 10.6l6.8-3.9M8.6 13.4l6.8 3.9"></path></svg>
+      Partager mon planning de la semaine
+    </button>
+    <p class="notice" id="shareNotice" hidden></p>
   </section>
 
   <!-- HISTORIQUE -->

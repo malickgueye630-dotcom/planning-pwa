@@ -16,7 +16,9 @@ let state = {
   mode: "DRIVING",   // DRIVING | WALKING | BICYCLING | TRANSIT
   navitiaKey: "",    // free Navitia API key, only needed for TRANSIT mode
   schedule: [],   // [{day, type, start, end}]
-  wakes: []       // [{day, wake, start}]
+  wakes: [],      // [{day, wake, start}]
+  theme: "dark",       // dark | light
+  notifEnabled: false,  // re-armed automatically whenever the schedule changes
 };
 
 let currentImageDataUrl = null;   // full original photo (data URL)
@@ -27,6 +29,7 @@ let cropDragState = null;         // active pointer-drag info while drawing a se
 const $ = (id) => document.getElementById(id);
 
 const els = {
+  themeToggleBtn: $("themeToggleBtn"),
   preview: $("preview"),
   dropzoneEmpty: $("dropzoneEmpty"),
   cameraInput: $("cameraInput"),
@@ -74,11 +77,20 @@ const els = {
   checkResult: $("checkResult"),
   historyList: $("historyList"),
   todaySummary: $("todaySummary"),
+  cardStats: $("cardStats"),
+  statHours: $("statHours"),
+  statWorkDays: $("statWorkDays"),
+  statRepos: $("statRepos"),
+  statWake: $("statWake"),
+  googleCalendarList: $("googleCalendarList"),
+  shareBtn: $("shareBtn"),
+  shareNotice: $("shareNotice"),
 };
 
 /* ---------- INIT ---------- */
 window.addEventListener("DOMContentLoaded", () => {
   loadState();
+  applyTheme(state.theme);
   renderHistory();
   refreshTodaySummary();
 
@@ -86,6 +98,14 @@ window.addEventListener("DOMContentLoaded", () => {
     navigator.serviceWorker.register("service-worker.js").catch(() => {});
   }
 });
+
+els.themeToggleBtn.addEventListener("click", () => {
+  state.theme = state.theme === "light" ? "dark" : "light";
+  saveState();
+  applyTheme(state.theme);
+});
+
+els.shareBtn.addEventListener("click", shareSchedule);
 
 els.targetName.addEventListener("change", () => {
   state.targetName = els.targetName.value.trim().toUpperCase() || "MALICK";
@@ -124,6 +144,11 @@ els.calcTravelBtn.addEventListener("click", calcTravel);
 els.downloadIcsBtn.addEventListener("click", downloadIcs);
 els.notifBtn.addEventListener("click", enableNotifications);
 els.checkTodayBtn.addEventListener("click", checkToday);
+
+/* ---------- THEME ---------- */
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme === "light" ? "light" : "dark");
+}
 
 /* ---------- IMAGE IMPORT ---------- */
 function handleImage(file) {
@@ -816,6 +841,11 @@ function recalcWakes() {
   state.wakes = wakes;
   saveState();
   renderWakes();
+  renderStats();
+  renderGoogleCalendarLinks();
+  if (state.notifEnabled && "Notification" in window && Notification.permission === "granted") {
+    scheduleLocalReminders();
+  }
 }
 
 function subtractMinutes(timeStr, minutes) {
@@ -848,6 +878,123 @@ function renderWakes() {
     `;
     els.wakeList.appendChild(row);
   });
+}
+
+/* ---------- STATISTIQUES ---------- */
+function workMinutes(entry) {
+  if (entry.type !== "work" || !entry.start || !entry.end) return 0;
+  const [sh, sm] = entry.start.split(":").map(Number);
+  const [eh, em] = entry.end.split(":").map(Number);
+  let total = eh * 60 + em - (sh * 60 + sm);
+  if (total <= 0) total += 24 * 60;
+  return total;
+}
+
+function computeWeekStats() {
+  const totalMin = state.schedule.reduce((sum, e) => sum + workMinutes(e), 0);
+  const workCount = state.schedule.filter((e) => e.type === "work" && e.start && e.end).length;
+  const reposCount = state.schedule.filter((e) => e.type === "repos").length;
+  const earliestWake = state.wakes.length
+    ? state.wakes.reduce((min, w) => (w.wake < min ? w.wake : min), state.wakes[0].wake)
+    : null;
+  return { totalMin, workCount, reposCount, earliestWake };
+}
+
+function renderStats() {
+  if (state.schedule.length === 0) {
+    els.cardStats.hidden = true;
+    return;
+  }
+  const stats = computeWeekStats();
+  els.cardStats.hidden = false;
+  els.statHours.textContent = stats.totalMin > 0 ? formatDuration(stats.totalMin) : "—";
+  els.statWorkDays.textContent = stats.workCount;
+  els.statRepos.textContent = stats.reposCount;
+  els.statWake.textContent = stats.earliestWake || "—";
+}
+
+/* ---------- GOOGLE CALENDAR (lien direct, gratuit, sans clé API) ----------
+ * Complète l'export .ics : ouvre directement l'écran de création d'événement
+ * de Google Calendar, pré-rempli, jour par jour. Aucun compte développeur,
+ * aucune clé OAuth — juste une URL signée par les paramètres de l'événement.
+ */
+function googleCalendarUrl(entry) {
+  const date = nextDateForDay(entry.day);
+  const start = combineDateTime(date, entry.start);
+  let end;
+  if (entry.end) {
+    end = combineDateTime(date, entry.end);
+    if (end <= start) end = new Date(end.getTime() + 24 * 3600 * 1000);
+  } else {
+    end = new Date(start.getTime() + 8 * 3600 * 1000);
+  }
+  const fmt = (d) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Travail — ${state.targetName}`,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details: `Prise de poste ${entry.start}.`,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+function renderGoogleCalendarLinks() {
+  els.googleCalendarList.innerHTML = "";
+  const workDays = state.schedule.filter((e) => e.type === "work" && e.start);
+  if (workDays.length === 0) {
+    els.googleCalendarList.hidden = true;
+    return;
+  }
+  els.googleCalendarList.hidden = false;
+  workDays.forEach((entry) => {
+    const a = document.createElement("a");
+    a.href = googleCalendarUrl(entry);
+    a.target = "_blank";
+    a.rel = "noopener";
+    a.className = "gcal-chip";
+    a.textContent = entry.day;
+    els.googleCalendarList.appendChild(a);
+  });
+}
+
+/* ---------- PARTAGE ---------- */
+function buildWeekSummaryText() {
+  const lines = [`Planning de ${state.targetName} :`];
+  state.schedule.forEach((e) => {
+    if (e.type === "repos") {
+      lines.push(`${e.day} : repos`);
+    } else if (e.type === "formation") {
+      lines.push(`${e.day} : formation`);
+    } else if (e.start) {
+      const wake = state.wakes.find((w) => w.day === e.day);
+      lines.push(
+        `${e.day} : ${e.start}${e.end ? " → " + e.end : ""}` +
+          (wake ? ` (réveil ${wake.wake})` : "")
+      );
+    }
+  });
+  return lines.join("\n");
+}
+
+async function shareSchedule() {
+  if (state.schedule.length === 0) return;
+  const text = buildWeekSummaryText();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Mon Planning", text });
+    } catch (e) {
+      // user cancelled the share sheet — nothing to do
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    els.shareNotice.hidden = false;
+    els.shareNotice.textContent = "Planning copié dans le presse-papier.";
+  } catch (e) {
+    els.shareNotice.hidden = false;
+    els.shareNotice.textContent = "Impossible de partager automatiquement sur cet appareil.";
+  }
 }
 
 /* ---------- TRAJET (OPENSTREETMAP — gratuit, sans clé API) ----------
@@ -1187,6 +1334,8 @@ function cryptoRandom() {
 }
 
 /* ---------- NOTIFICATIONS ---------- */
+let notifTimers = [];
+
 async function enableNotifications() {
   if (!("Notification" in window)) {
     els.notifNotice.textContent = "Les notifications ne sont pas supportées sur ce navigateur. Utilisez l'export .ics.";
@@ -1194,25 +1343,36 @@ async function enableNotifications() {
   }
   const perm = await Notification.requestPermission();
   if (perm === "granted") {
+    state.notifEnabled = true;
+    saveState();
     els.notifNotice.textContent =
-      "Rappels activés pour cette session. Sur iPhone, ces notifications peuvent être interrompues si l'app n'est pas ouverte — gardez l'export .ics comme solution fiable.";
+      "Rappels activés. Ils se remettent à jour automatiquement à chaque changement d'horaire. Sur iPhone, ces notifications peuvent être interrompues si l'app n'est pas ouverte — gardez l'export .ics comme solution fiable.";
     scheduleLocalReminders();
   } else {
+    state.notifEnabled = false;
+    saveState();
     els.notifNotice.textContent = "Notifications refusées. L'export .ics reste la solution la plus fiable sur iPhone.";
   }
 }
 
+function clearNotifTimers() {
+  notifTimers.forEach((id) => clearTimeout(id));
+  notifTimers = [];
+}
+
 function scheduleLocalReminders() {
+  clearNotifTimers();
   state.wakes.forEach((w) => {
     const date = nextDateForDay(w.day);
     const wakeDate = combineDateTime(date, w.wake);
     const delay = wakeDate.getTime() - Date.now();
     if (delay > 0 && delay < 24 * 3600 * 1000) {
-      setTimeout(() => {
+      const id = setTimeout(() => {
         new Notification("Réveil — " + state.targetName, {
           body: `Prise de poste ${w.start} aujourd'hui.`,
         });
       }, delay);
+      notifTimers.push(id);
     }
   });
 }

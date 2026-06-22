@@ -100,10 +100,23 @@ Une fois l'URL https ouverte dans **Safari** sur iPhone :
    Mail sur iPhone et choisir **Ajouter à Calendrier**. Chaque événement de
    travail contient une alerte programmée à l'heure de réveil calculée.
 6. Le bouton **Vérifier mon planning du jour** donne un résumé immédiat (repos,
-   formation, ou horaire + réveil du jour).
-7. Le planning, les réglages et l'historique des 5 dernières photos analysées
-   sont sauvegardés localement (`localStorage`) — rien n'est perdu en
-   refermant l'app.
+   formation, ou horaire + réveil du jour). Le bouton **Partager mon planning
+   de la semaine** envoie ce résumé via le partage natif du téléphone (ou le
+   copie dans le presse-papier si le partage n'est pas disponible).
+7. La carte **Statistiques de la semaine** calcule automatiquement les heures
+   travaillées, le nombre de jours travaillés/repos et l'heure de réveil la
+   plus tôt de la semaine.
+8. En plus du fichier `.ics`, des liens **« Ajouter à Google Calendar »**
+   apparaissent jour par jour dans la carte Calendrier — aucun compte ni clé
+   API requis, juste un lien pré-rempli ouvert dans le navigateur.
+9. Le bouton **Activer les rappels de réveil** demande la permission de
+   notification puis se remet à jour automatiquement à chaque changement
+   d'horaire (pas besoin de le réactiver après chaque correction).
+10. Un bouton en haut à droite permet de basculer entre **thème sombre et
+    thème clair** ; le choix est mémorisé sur l'appareil.
+11. Le planning, les réglages et l'historique des 5 dernières photos analysées
+    sont sauvegardés localement (`localStorage`) — rien n'est perdu en
+    refermant l'app.
 
 ## 6. Calcul du trajet avec OpenStreetMap (gratuit, sans carte bancaire)
 
