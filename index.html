@@ -75,14 +75,24 @@
 
     <!-- CROP OVERLAY -->
     <div class="cropper" id="cropper" hidden>
-      <p class="hint">Faites glisser un rectangle autour de la ligne MALICK, puis validez.</p>
+      <p class="hint">
+        Glissez les 4 coins pour qu'ils encadrent <strong>la ligne des jours (Lundi…Dimanche) en haut
+        et votre ligne</strong> en bas — gardez les deux, même si d'autres employés sont entre les deux,
+        ça n'est pas un problème. Très utile si la photo est prise de travers (vitre, cadre au mur…).
+      </p>
       <div class="cropper__stage" id="cropperStage">
         <img id="cropperImage" alt="Photo à recadrer">
-        <div class="cropper__selection" id="cropperSelection" hidden></div>
+        <svg class="cropper__guide" id="cropperGuide" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <polygon id="cropperPolygon" points=""></polygon>
+        </svg>
+        <div class="cropper__handle" id="cropHandleTl" data-corner="tl"></div>
+        <div class="cropper__handle" id="cropHandleTr" data-corner="tr"></div>
+        <div class="cropper__handle" id="cropHandleBr" data-corner="br"></div>
+        <div class="cropper__handle" id="cropHandleBl" data-corner="bl"></div>
       </div>
       <div class="row">
         <button class="btn btn--ghost" id="cropCancelBtn">Annuler</button>
-        <button class="btn btn--accent" id="cropConfirmBtn" disabled>Valider le recadrage</button>
+        <button class="btn btn--accent" id="cropConfirmBtn">Valider le recadrage</button>
       </div>
     </div>
 

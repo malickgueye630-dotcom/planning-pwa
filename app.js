@@ -27,7 +27,8 @@ let state = {
 
 let currentImageDataUrl = null;   // full original photo (data URL)
 let cropImageDataUrl = null;      // cropped region, if user cropped (data URL)
-let cropDragState = null;         // active pointer-drag info while drawing a selection
+let cropCorners = null;           // {tl,tr,br,bl} corner positions in stage px while cropping
+let cropActiveHandle = null;      // corner key currently being dragged
 
 /* ---------- DOM ---------- */
 const $ = (id) => document.getElementById(id);
@@ -49,7 +50,13 @@ const els = {
   cropper: $("cropper"),
   cropperStage: $("cropperStage"),
   cropperImage: $("cropperImage"),
-  cropperSelection: $("cropperSelection"),
+  cropperPolygon: $("cropperPolygon"),
+  cropHandles: {
+    tl: $("cropHandleTl"),
+    tr: $("cropHandleTr"),
+    br: $("cropHandleBr"),
+    bl: $("cropHandleBl"),
+  },
   cropCancelBtn: $("cropCancelBtn"),
   cropConfirmBtn: $("cropConfirmBtn"),
   ocrProgress: $("ocrProgress"),
@@ -132,6 +139,9 @@ els.cropBtn.addEventListener("click", openCropper);
 els.cropResetBtn.addEventListener("click", resetCrop);
 els.cropCancelBtn.addEventListener("click", closeCropper);
 els.cropConfirmBtn.addEventListener("click", confirmCrop);
+for (const key of ["tl", "tr", "br", "bl"]) {
+  els.cropHandles[key].addEventListener("pointerdown", (e) => onCropHandleDown(key, e));
+}
 els.addDayBtn.addEventListener("click", () => {
   state.schedule.push({ day: "Lundi", type: "work", start: "09:00", end: "17:00" });
   renderSchedule();
@@ -183,14 +193,25 @@ function handleImage(file) {
   reader.readAsDataURL(file);
 }
 
-/* ---------- CROP (recadrage manuel) ---------- */
+/* ---------- CROP (recadrage manuel à 4 coins + correction de perspective) ----------
+ * Une simple sélection rectangulaire ne suffit pas quand la photo est prise de travers
+ * (planning au mur, cadre sous verre, angle de prise de vue) : la ligne ciblée reste
+ * inclinée dans le rectangle et empile visuellement plusieurs lignes pour l'OCR. On
+ * laisse donc l'utilisateur positionner 4 coins sur les bords réels de sa ligne, puis
+ * on redresse ce quadrilatère en un rectangle plat avant de lancer Tesseract.
+ */
 function openCropper() {
   els.cropperImage.src = currentImageDataUrl;
-  els.cropperSelection.hidden = true;
-  els.cropConfirmBtn.disabled = true;
+  els.cropConfirmBtn.disabled = false;
   els.cropper.hidden = false;
   els.cropper.scrollIntoView({ behavior: "smooth", block: "center" });
-  attachCropperEvents();
+
+  const place = () => {
+    initCropCorners();
+    attachCropperEvents();
+  };
+  if (els.cropperImage.complete && els.cropperImage.naturalWidth) place();
+  else els.cropperImage.onload = place;
 }
 
 function closeCropper() {
@@ -204,92 +225,191 @@ function resetCrop() {
   els.cropStatus.hidden = true;
 }
 
+function initCropCorners() {
+  const rect = els.cropperStage.getBoundingClientRect();
+  // Default to a tall band spanning most of the photo's height — the column
+  // mapping needs the day-header row (Lundi…Dimanche) AND the target row
+  // both inside the crop, so the starting guess should encourage "top to
+  // bottom" rather than "a thin band around just my row".
+  const marginX = rect.width * 0.05;
+  const top = rect.height * 0.04;
+  const bottom = rect.height * 0.96;
+  cropCorners = {
+    tl: { x: marginX, y: top },
+    tr: { x: rect.width - marginX, y: top },
+    br: { x: rect.width - marginX, y: bottom },
+    bl: { x: marginX, y: bottom },
+  };
+  renderCropCorners();
+}
+
+function renderCropCorners() {
+  if (!cropCorners) return;
+  const rect = els.cropperStage.getBoundingClientRect();
+  const pct = (v, total) => (total ? (v / total) * 100 : 0);
+
+  for (const key of ["tl", "tr", "br", "bl"]) {
+    const { x, y } = cropCorners[key];
+    const handle = els.cropHandles[key];
+    handle.style.left = pct(x, rect.width) + "%";
+    handle.style.top = pct(y, rect.height) + "%";
+  }
+
+  const order = ["tl", "tr", "br", "bl"];
+  const points = order
+    .map((k) => `${pct(cropCorners[k].x, rect.width)},${pct(cropCorners[k].y, rect.height)}`)
+    .join(" ");
+  els.cropperPolygon.setAttribute("points", points);
+}
+
 function attachCropperEvents() {
-  const stage = els.cropperStage;
-  stage.addEventListener("pointerdown", onCropPointerDown);
-  stage.addEventListener("pointermove", onCropPointerMove);
+  els.cropperStage.addEventListener("pointermove", onCropPointerMove);
   window.addEventListener("pointerup", onCropPointerUp);
 }
 
 function detachCropperEvents() {
-  const stage = els.cropperStage;
-  stage.removeEventListener("pointerdown", onCropPointerDown);
-  stage.removeEventListener("pointermove", onCropPointerMove);
+  els.cropperStage.removeEventListener("pointermove", onCropPointerMove);
   window.removeEventListener("pointerup", onCropPointerUp);
-  cropDragState = null;
+  cropActiveHandle = null;
 }
 
-function onCropPointerDown(e) {
-  const rect = els.cropperStage.getBoundingClientRect();
-  cropDragState = {
-    startX: clamp(e.clientX - rect.left, 0, rect.width),
-    startY: clamp(e.clientY - rect.top, 0, rect.height),
-    rect,
-  };
-  els.cropperSelection.hidden = false;
-  els.cropConfirmBtn.disabled = true;
-  updateSelectionBox(cropDragState.startX, cropDragState.startY, 0, 0);
+function onCropHandleDown(key, e) {
+  e.preventDefault();
+  cropActiveHandle = key;
 }
 
 function onCropPointerMove(e) {
-  if (!cropDragState) return;
-  const { rect, startX, startY } = cropDragState;
-  const x = clamp(e.clientX - rect.left, 0, rect.width);
-  const y = clamp(e.clientY - rect.top, 0, rect.height);
-  const left = Math.min(startX, x);
-  const top = Math.min(startY, y);
-  const w = Math.abs(x - startX);
-  const h = Math.abs(y - startY);
-  updateSelectionBox(left, top, w, h);
+  if (!cropActiveHandle || !cropCorners) return;
+  const rect = els.cropperStage.getBoundingClientRect();
+  cropCorners[cropActiveHandle] = {
+    x: clamp(e.clientX - rect.left, 0, rect.width),
+    y: clamp(e.clientY - rect.top, 0, rect.height),
+  };
+  renderCropCorners();
 }
 
 function onCropPointerUp() {
-  if (!cropDragState) return;
-  const box = readSelectionBox();
-  els.cropConfirmBtn.disabled = !(box.width > 12 && box.height > 12);
-  cropDragState = null;
-}
-
-function updateSelectionBox(left, top, w, h) {
-  els.cropperSelection.style.left = left + "px";
-  els.cropperSelection.style.top = top + "px";
-  els.cropperSelection.style.width = w + "px";
-  els.cropperSelection.style.height = h + "px";
-}
-
-function readSelectionBox() {
-  return {
-    left: parseFloat(els.cropperSelection.style.left) || 0,
-    top: parseFloat(els.cropperSelection.style.top) || 0,
-    width: parseFloat(els.cropperSelection.style.width) || 0,
-    height: parseFloat(els.cropperSelection.style.height) || 0,
-  };
+  cropActiveHandle = null;
 }
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
 }
 
-function confirmCrop() {
-  const box = readSelectionBox();
-  if (box.width < 12 || box.height < 12) return;
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
 
+function lerpPoint(a, b, t) {
+  return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+}
+
+/**
+ * Computes the 2D affine matrix {a,b,c,d,e,f} mapping 3 source points to 3
+ * destination points (dst = M * src). Used to texture-map small triangular
+ * patches of the source image onto the warped output — Canvas2D has no
+ * built-in projective transform, so a quad is approximated by subdividing
+ * it into a fine grid of near-affine triangles (standard canvas perspective
+ * warp technique).
+ */
+function affineFromTriangles(s0, s1, s2, d0, d1, d2) {
+  const det = s0.x * (s1.y - s2.y) - s1.x * (s0.y - s2.y) + s2.x * (s0.y - s1.y);
+  if (Math.abs(det) < 1e-9) return null;
+  function solve(d0v, d1v, d2v) {
+    const a = (d0v * (s1.y - s2.y) - d1v * (s0.y - s2.y) + d2v * (s0.y - s1.y)) / det;
+    const b = (s0.x * (d1v - d2v) - s1.x * (d0v - d2v) + s2.x * (d0v - d1v)) / det;
+    const c = (s0.x * (s1.y * d2v - s2.y * d1v) - s1.x * (s0.y * d2v - s2.y * d0v) + s2.x * (s0.y * d1v - s1.y * d0v)) / det;
+    return [a, b, c];
+  }
+  const [a, c, e] = solve(d0.x, d1.x, d2.x);
+  const [b, d, f] = solve(d0.y, d1.y, d2.y);
+  return { a, b, c, d, e, f };
+}
+
+function drawAffineTriangle(ctx, img, s0, s1, s2, d0, d1, d2) {
+  const m = affineFromTriangles(s0, s1, s2, d0, d1, d2);
+  if (!m) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(d0.x, d0.y);
+  ctx.lineTo(d1.x, d1.y);
+  ctx.lineTo(d2.x, d2.y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.setTransform(m.a, m.b, m.c, m.d, m.e, m.f);
+  ctx.drawImage(img, 0, 0);
+  ctx.restore();
+}
+
+/** Warps the quadrilateral `corners` (in `img` natural-pixel coordinates) into a flat outW×outH canvas. */
+function warpQuadToCanvas(img, corners, outW, outH) {
+  const { tl, tr, br, bl } = corners;
+
+  // Pre-crop to the quad's bounding box so each of the GRID² triangle draws
+  // below blits a small bitmap instead of redrawing the entire (often
+  // multi-megapixel) source photo hundreds of times.
+  const minX = Math.max(0, Math.floor(Math.min(tl.x, tr.x, br.x, bl.x)));
+  const minY = Math.max(0, Math.floor(Math.min(tl.y, tr.y, br.y, bl.y)));
+  const maxX = Math.min(img.naturalWidth, Math.ceil(Math.max(tl.x, tr.x, br.x, bl.x)));
+  const maxY = Math.min(img.naturalHeight, Math.ceil(Math.max(tl.y, tr.y, br.y, bl.y)));
+  const boxW = Math.max(1, maxX - minX);
+  const boxH = Math.max(1, maxY - minY);
+
+  const cropCanvas = document.createElement("canvas");
+  cropCanvas.width = boxW;
+  cropCanvas.height = boxH;
+  cropCanvas.getContext("2d").drawImage(img, minX, minY, boxW, boxH, 0, 0, boxW, boxH);
+
+  const shift = (p) => ({ x: p.x - minX, y: p.y - minY });
+  const local = { tl: shift(tl), tr: shift(tr), br: shift(br), bl: shift(bl) };
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d");
+
+  const GRID = 16;
+  const srcAt = (u, v) => lerpPoint(lerpPoint(local.tl, local.tr, u), lerpPoint(local.bl, local.br, u), v);
+
+  for (let gy = 0; gy < GRID; gy++) {
+    for (let gx = 0; gx < GRID; gx++) {
+      const u0 = gx / GRID, u1 = (gx + 1) / GRID;
+      const v0 = gy / GRID, v1 = (gy + 1) / GRID;
+
+      const sTL = srcAt(u0, v0), sTR = srcAt(u1, v0), sBL = srcAt(u0, v1), sBR = srcAt(u1, v1);
+      const dTL = { x: u0 * outW, y: v0 * outH };
+      const dTR = { x: u1 * outW, y: v0 * outH };
+      const dBL = { x: u0 * outW, y: v1 * outH };
+      const dBR = { x: u1 * outW, y: v1 * outH };
+
+      drawAffineTriangle(ctx, cropCanvas, sTL, sTR, sBL, dTL, dTR, dBL);
+      drawAffineTriangle(ctx, cropCanvas, sTR, sBR, sBL, dTR, dBR, dBL);
+    }
+  }
+  return canvas;
+}
+
+function confirmCrop() {
+  if (!cropCorners) return;
   const stageRect = els.cropperStage.getBoundingClientRect();
   const img = els.cropperImage;
   const scaleX = img.naturalWidth / stageRect.width;
   const scaleY = img.naturalHeight / stageRect.height;
+  const toNatural = (p) => ({ x: p.x * scaleX, y: p.y * scaleY });
 
-  const sx = box.left * scaleX;
-  const sy = box.top * scaleY;
-  const sw = box.width * scaleX;
-  const sh = box.height * scaleY;
+  const corners = {
+    tl: toNatural(cropCorners.tl),
+    tr: toNatural(cropCorners.tr),
+    br: toNatural(cropCorners.br),
+    bl: toNatural(cropCorners.bl),
+  };
 
-  const canvas = document.createElement("canvas");
-  canvas.width = sw;
-  canvas.height = sh;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
+  // Output size: average of the two horizontal/vertical edge lengths, with a
+  // generous minimum so a thin row still gets enough pixels for OCR.
+  const outW = Math.max(200, Math.round((dist(corners.tl, corners.tr) + dist(corners.bl, corners.br)) / 2));
+  const outH = Math.max(60, Math.round((dist(corners.tl, corners.bl) + dist(corners.tr, corners.br)) / 2));
 
+  const canvas = warpQuadToCanvas(img, corners, outW, outH);
   cropImageDataUrl = canvas.toDataURL("image/png");
   els.preview.src = cropImageDataUrl;
   els.cropStatus.hidden = false;
@@ -431,9 +551,17 @@ async function runOcr() {
       },
     });
 
-    setProgress(100, "Analyse du texte…");
+    setProgress(95, "Recherche de votre ligne…");
     const text = result.data.text;
-    const fromGeometry = parsePlanningFromWords(result.data.blocks, state.targetName);
+    const baseImg = await loadImageEl(baseImage);
+    const ocrScale = enhance ? 3 : 1;
+    const fromGeometry = await parsePlanningFromWordsWithZoom(
+      result.data.blocks,
+      state.targetName,
+      baseImg,
+      ocrScale
+    );
+    setProgress(100, "Analyse du texte…");
     const parsed = fromGeometry || parsePlanning(text, state.targetName);
     const confidence = assessConfidence(parsed);
 
@@ -679,18 +807,7 @@ function findDayHeaderRow(rows) {
   return best;
 }
 
-function parsePlanningFromWords(blocks, targetName) {
-  const words = flattenWords(blocks);
-  if (words.length === 0) return null;
-
-  const rows = clusterRows(words);
-  const headerHits = findDayHeaderRow(rows);
-  if (!headerHits) return null;
-
-  const target = normalize(targetName);
-  const targetRow = rows.find((row) => rowMatchesName(row, target));
-  if (!targetRow) return null;
-
+function buildResultFromRow(headerHits, targetRow) {
   // Column boundaries: midpoints between consecutive day headers. The
   // first/last column stay open-ended so the name/role text to the left
   // and any trailing "Total" column to the right are dropped rather than
@@ -713,6 +830,130 @@ function parsePlanningFromWords(blocks, targetName) {
   // all-REPOS week.
   const usable = result.some((r) => r.type !== "work" || r.start);
   return usable ? result : null;
+}
+
+/**
+ * Name cells are frequently printed on a colored background (blue/green
+ * header bands in real schedule photos). At the resolution of a full-width,
+ * multi-day crop, Tesseract's automatic page segmentation reliably fails to
+ * even emit a word for that cell — there's nothing for rowMatchesName to
+ * compare against, regardless of fuzzy tolerance. This finds the row a
+ * cheap plain-text pass missed by re-OCRing just the name-column sliver of
+ * each candidate row, heavily zoomed in and forced to single-line mode,
+ * which is dramatically more reliable on the same blurry source photo.
+ */
+async function findTargetRowByZoom(img, scale, rows, headerHits, target) {
+  if (typeof Tesseract === "undefined" || !Tesseract.createWorker) return null;
+  const xs = headerHits.map((h) => h.x);
+  const nameColEndOcrPx = Math.min(...xs) * 0.88;
+  const nameColEndOrigPx = nameColEndOcrPx / scale;
+  if (nameColEndOrigPx < 8) return null;
+
+  const MAX_ROWS = 40;
+  const candidates = rows.slice(0, MAX_ROWS);
+
+  let worker;
+  try {
+    worker = await Tesseract.createWorker("fra");
+    await worker.setParameters({ tessedit_pageseg_mode: Tesseract.PSM.SINGLE_LINE });
+  } catch (err) {
+    return null;
+  }
+
+  let best = null;
+  let bestScore = 2; // only accept matches scoring <= 1 (same tolerance as rowMatchesName)
+  try {
+    for (const row of candidates) {
+      const yMin = Math.min(...row.map((w) => w.y - (w.height || 0) / 2));
+      const yMax = Math.max(...row.map((w) => w.y + (w.height || 0) / 2));
+      const yMinOrig = yMin / scale;
+      const yMaxOrig = yMax / scale;
+      if (yMaxOrig - yMinOrig < 4) continue;
+      const pad = (yMaxOrig - yMinOrig) * 0.25;
+      const canvas = buildZoomedRowCanvas(
+        img,
+        nameColEndOrigPx,
+        Math.max(0, yMinOrig - pad),
+        yMaxOrig + pad,
+        170
+      );
+      try {
+        const { data } = await worker.recognize(canvas);
+        const score = nameTokenScore(data.text, target);
+        if (score < bestScore) {
+          bestScore = score;
+          best = row;
+          if (score === 0) break;
+        }
+      } catch (err) {
+        // Skip rows the secondary pass can't read; the main loop continues.
+      }
+    }
+  } finally {
+    await worker.terminate();
+  }
+
+  return bestScore <= 1 ? best : null;
+}
+
+function nameTokenScore(text, target) {
+  const tokens = normalize(text).replace(/[^A-Z]/g, " ").split(/\s+/).filter(Boolean);
+  let best = 99;
+  for (const tok of tokens) {
+    if (tok.length < 3) continue;
+    if (tok === target || tok.includes(target) || target.includes(tok)) return 0;
+    if (tok.length >= 4) best = Math.min(best, editDistanceCapped(tok, target));
+  }
+  return best;
+}
+
+function buildZoomedRowCanvas(img, xEnd, yStart, yEnd, targetHeight) {
+  const rowH = Math.max(1, yEnd - yStart);
+  const scale = clamp(targetHeight / rowH, 1, 14);
+  const outW = Math.max(1, Math.round(xEnd * scale));
+  const outH = Math.max(1, Math.round(rowH * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outW;
+  canvas.height = outH;
+  const ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(img, 0, yStart, xEnd, rowH, 0, 0, outW, outH);
+
+  const imageData = ctx.getImageData(0, 0, outW, outH);
+  grayscaleAndContrast(imageData.data);
+  ctx.putImageData(imageData, 0, 0);
+  sharpenCanvas(ctx, outW, outH);
+
+  return canvas;
+}
+
+function loadImageEl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+async function parsePlanningFromWordsWithZoom(blocks, targetName, img, scale) {
+  const words = flattenWords(blocks);
+  if (words.length === 0) return null;
+
+  const rows = clusterRows(words);
+  const headerHits = findDayHeaderRow(rows);
+  if (!headerHits) return null;
+
+  const target = normalize(targetName);
+  let targetRow = rows.find((row) => rowMatchesName(row, target));
+  if (!targetRow) {
+    targetRow = await findTargetRowByZoom(img, scale, rows, headerHits, target);
+  }
+  if (!targetRow) return null;
+
+  return buildResultFromRow(headerHits, targetRow);
 }
 
 function parseChunk(dayName, chunk) {
