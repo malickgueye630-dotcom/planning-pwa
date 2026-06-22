@@ -14,8 +14,9 @@ index.html        Interface
 style.css          Styles
 app.js             Logique : OCR, extraction, calcul des réveils, export .ics
 manifest.json      Manifest PWA (installation sur iPhone)
-service-worker.js  Cache hors-ligne
+service-worker.js  Cache hors-ligne + réception des notifications push
 icons/             Icônes de l'application
+worker/            Service de notifications push (Cloudflare Workers, optionnel)
 README.md          Ce fichier
 ```
 
@@ -111,7 +112,9 @@ Une fois l'URL https ouverte dans **Safari** sur iPhone :
    API requis, juste un lien pré-rempli ouvert dans le navigateur.
 9. Le bouton **Activer les rappels de réveil** demande la permission de
    notification puis se remet à jour automatiquement à chaque changement
-   d'horaire (pas besoin de le réactiver après chaque correction).
+   d'horaire (pas besoin de le réactiver après chaque correction). Pour de
+   vraies notifications qui arrivent même app fermée, voir la section 7
+   (configuration du service push gratuit).
 10. Un bouton en haut à droite permet de basculer entre **thème sombre et
     thème clair** ; le choix est mémorisé sur l'appareil.
 11. Le planning, les réglages et l'historique des 5 dernières photos analysées
@@ -155,17 +158,78 @@ de réveil.
 - La clé Navitia gratuite a aussi une limite d'usage raisonnable (largement
   suffisante pour un usage personnel quotidien).
 
-## 7. Limites connues sur iPhone
+## 7. Notifications push, même app fermée (gratuit, via Cloudflare Workers)
+
+Le bouton **Activer les rappels de réveil** propose deux modes :
+
+- **Rappels locaux** (par défaut, sans configuration) : fonctionnent uniquement
+  si l'app/l'onglet est ouvert ou a été utilisé récemment.
+- **Vrai push** : une notification système arrive même si l'app est fermée.
+  Cela nécessite un petit serveur (le navigateur ne peut pas se réveiller
+  seul) — fourni dans le dossier `worker/`, à déployer gratuitement sur
+  [Cloudflare Workers](https://workers.cloudflare.com/) (aucune carte
+  bancaire requise pour le plan gratuit).
+
+### Déploiement du service de notifications
+
+1. Créez un compte gratuit sur [dash.cloudflare.com](https://dash.cloudflare.com/sign-up).
+2. Sur votre machine, dans le dossier `worker/` :
+   ```bash
+   cd worker
+   npx wrangler login
+   npx wrangler kv namespace create SUBS
+   ```
+   Copiez l'`id` renvoyé dans `wrangler.toml`, à la place de
+   `REMPLACE_PAR_TON_ID_DE_NAMESPACE_KV`.
+3. Configurez les secrets (clés déjà générées pour ce projet, ou les vôtres
+   via `npx web-push generate-vapid-keys`) :
+   ```bash
+   npx wrangler secret put VAPID_PUBLIC_KEY
+   # BNiD8r-zRi3WGa1EWGhv3jPO3xT-rxMH2sVBK_XmmtE63g8iQFbsTgbkYQ34z4s0BXR0cukGJjjFZCBiShnr_f4
+   npx wrangler secret put VAPID_PRIVATE_KEY
+   # fvKndOkZ_ymauesWrlTNZJr0Z06uEZJo2NyMb8v-nys
+   npx wrangler secret put PUSH_SECRET
+   # une chaîne aléatoire de votre choix, ex. générée avec : openssl rand -hex 32
+   ```
+4. Déployez :
+   ```bash
+   npx wrangler deploy
+   ```
+   Notez l'URL affichée (`https://planning-pwa-push.<votre-compte>.workers.dev`).
+5. Dans l'app, carte **Calendrier** → **Configurer le push (avancé)** :
+   - **URL du service push** : collez l'URL obtenue à l'étape 4.
+   - **Clé publique VAPID** : déjà pré-remplie (laissez-la si vous avez utilisé
+     les clés ci-dessus).
+   - **Code secret partagé** : la même valeur que `PUSH_SECRET`.
+6. Cliquez sur **Activer les rappels de réveil** et autorisez les
+   notifications : les heures de réveil sont désormais envoyées au service,
+   qui notifie au bon moment, même app fermée.
+
+Laisser le champ **URL du service push** vide revient automatiquement aux
+rappels locaux, sans rien d'autre à changer.
+
+### Coûts et limites
+
+- Plan gratuit Cloudflare Workers : 100 000 requêtes/jour (le cron tourne
+  chaque minute, soit ~1 440 exécutions/jour) — largement suffisant pour un
+  usage personnel ou familial.
+- KV gratuit : 1 Go de stockage, largement suffisant pour stocker quelques
+  abonnements.
+- Le **code secret partagé** empêche quiconque connaîtrait l'URL du worker
+  d'enregistrer de faux abonnements ; ne le partagez pas.
+
+## 8. Limites connues sur iPhone
 
 - **Pas de vrai réveil natif.** Une PWA ne peut pas créer une alarme dans
   l'app Horloge d'iPhone. La solution fiable proposée ici est l'**alerte
   intégrée à l'événement Calendrier** (`.ics`), qui déclenche une notification
   système même app fermée.
-- **Notifications web peu fiables sur iOS.** Safari supporte les notifications
-  web depuis iOS 16.4, mais uniquement si l'app a été **installée sur l'écran
-  d'accueil**, et elles peuvent être retardées ou ne pas se déclencher si l'app
-  n'a pas été ouverte récemment. Utilisez-les comme rappel d'appoint, pas comme
-  solution principale.
+- **Notifications web sur iOS.** Safari supporte les notifications web depuis
+  iOS 16.4, mais uniquement si l'app a été **installée sur l'écran d'accueil**.
+  Les rappels locaux (sans service push configuré) peuvent être retardés ou ne
+  pas se déclencher si l'app n'a pas été ouverte récemment ; le vrai push
+  (section 7) est nettement plus fiable car il ne dépend pas de l'app ouverte,
+  mais gardez l'export `.ics` comme solution de repli en dernier recours.
 - **Pas de vérification automatique à 2h du matin.** iOS n'autorise pas une PWA
   à s'exécuter en arrière-plan à une heure précise. Le bouton **Vérifier mon
   planning du jour** et le résumé affiché à l'ouverture remplacent cette

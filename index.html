@@ -231,6 +231,28 @@
     </button>
     <p class="notice" id="notifNotice">Sur iPhone, les notifications d'une app web ne sont pas fiables. Préférez toujours l'export .ics dans Calendrier.</p>
 
+    <details class="push-config" id="pushConfig">
+      <summary>Configurer le push (avancé, fonctionne même app fermée)</summary>
+      <p class="field-note">
+        Renseigne l'URL de ton service de notifications push (un petit serveur
+        Cloudflare Workers, gratuit) pour recevoir de vraies notifications même
+        quand l'app est fermée. Laisse vide pour garder les rappels locaux
+        (uniquement quand l'app est ouverte).
+      </p>
+      <div class="field">
+        <label for="pushUrlInput">URL du service push</label>
+        <input type="url" id="pushUrlInput" placeholder="https://planning-pwa-push.tonpseudo.workers.dev">
+      </div>
+      <div class="field">
+        <label for="pushVapidInput">Clé publique VAPID</label>
+        <input type="text" id="pushVapidInput" value="BNiD8r-zRi3WGa1EWGhv3jPO3xT-rxMH2sVBK_XmmtE63g8iQFbsTgbkYQ34z4s0BXR0cukGJjjFZCBiShnr_f4">
+      </div>
+      <div class="field">
+        <label for="pushSecretInput">Code secret partagé</label>
+        <input type="text" id="pushSecretInput" placeholder="Même valeur que PUSH_SECRET côté serveur">
+      </div>
+    </details>
+
     <p class="hint gcal-intro">Ou ajoutez chaque jour directement à Google Calendar (aucune clé, aucun compte requis) :</p>
     <div class="gcal-list" id="googleCalendarList" hidden></div>
   </section>

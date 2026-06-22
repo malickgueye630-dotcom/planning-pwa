@@ -395,6 +395,19 @@ html[data-theme="light"] .topbar{
   gap: 10px;
 }
 
+.push-config{
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.push-config summary{
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.push-config[open] summary{ margin-bottom: 10px; }
+
 /* CHECKBOX FIELD */
 .checkbox-field{
   display:flex;

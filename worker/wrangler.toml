@@ -1,0 +1,12 @@
+name = "planning-pwa-push"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+# Vérifie les rappels chaque minute et envoie une notification push aux
+# abonnés dont l'heure de réveil tombe dans la fenêtre en cours.
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "SUBS"
+id = "REMPLACE_PAR_TON_ID_DE_NAMESPACE_KV"

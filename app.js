@@ -20,6 +20,9 @@ let state = {
   weatherAdjust: {},   // {day: extraMinutes} — pluie/neige détectées via Open-Meteo
   theme: "dark",       // dark | light
   notifEnabled: false,  // re-armed automatically whenever the schedule changes
+  pushUrl: "",       // URL du service de notifications push (Cloudflare Worker)
+  pushVapidKey: "",  // clé publique VAPID correspondante
+  pushSecret: "",    // doit correspondre au secret PUSH_SECRET côté serveur
 };
 
 let currentImageDataUrl = null;   // full original photo (data URL)
@@ -77,6 +80,9 @@ const els = {
   downloadIcsBtn: $("downloadIcsBtn"),
   notifBtn: $("notifBtn"),
   notifNotice: $("notifNotice"),
+  pushUrlInput: $("pushUrlInput"),
+  pushVapidInput: $("pushVapidInput"),
+  pushSecretInput: $("pushSecretInput"),
   checkTodayBtn: $("checkTodayBtn"),
   checkResult: $("checkResult"),
   historyList: $("historyList"),
@@ -94,6 +100,7 @@ const els = {
 /* ---------- INIT ---------- */
 window.addEventListener("DOMContentLoaded", () => {
   loadState();
+  if (!state.pushVapidKey) state.pushVapidKey = els.pushVapidInput.value.trim();
   applyTheme(state.theme);
   renderHistory();
   refreshTodaySummary();
@@ -149,6 +156,9 @@ els.weatherBtn.addEventListener("click", calcWeatherAdjustment);
 els.weatherClearBtn.addEventListener("click", clearWeatherAdjustment);
 els.downloadIcsBtn.addEventListener("click", downloadIcs);
 els.notifBtn.addEventListener("click", enableNotifications);
+els.pushUrlInput.addEventListener("change", () => { state.pushUrl = els.pushUrlInput.value.trim(); saveState(); });
+els.pushVapidInput.addEventListener("change", () => { state.pushVapidKey = els.pushVapidInput.value.trim(); saveState(); });
+els.pushSecretInput.addEventListener("change", () => { state.pushSecret = els.pushSecretInput.value.trim(); saveState(); });
 els.checkTodayBtn.addEventListener("click", checkToday);
 
 /* ---------- THEME ---------- */
@@ -851,7 +861,11 @@ function recalcWakes() {
   renderStats();
   renderGoogleCalendarLinks();
   if (state.notifEnabled && "Notification" in window && Notification.permission === "granted") {
-    scheduleLocalReminders();
+    if (state.pushUrl) {
+      syncPushIfEnabled();
+    } else {
+      scheduleLocalReminders();
+    }
   }
 }
 
@@ -1438,17 +1452,30 @@ async function enableNotifications() {
     return;
   }
   const perm = await Notification.requestPermission();
-  if (perm === "granted") {
-    state.notifEnabled = true;
-    saveState();
-    els.notifNotice.textContent =
-      "Rappels activés. Ils se remettent à jour automatiquement à chaque changement d'horaire. Sur iPhone, ces notifications peuvent être interrompues si l'app n'est pas ouverte — gardez l'export .ics comme solution fiable.";
-    scheduleLocalReminders();
-  } else {
+  if (perm !== "granted") {
     state.notifEnabled = false;
     saveState();
     els.notifNotice.textContent = "Notifications refusées. L'export .ics reste la solution la plus fiable sur iPhone.";
+    return;
   }
+
+  state.notifEnabled = true;
+  saveState();
+
+  if (state.pushUrl) {
+    const ok = await subscribeToPush();
+    if (ok) {
+      els.notifNotice.textContent =
+        "Notifications push activées : elles arrivent même si l'app est fermée. Elles se remettent à jour automatiquement à chaque changement d'horaire.";
+      return;
+    }
+    els.notifNotice.textContent =
+      "Impossible de joindre le service de notifications push. Vérifiez l'URL et le code secret, ou laissez-les vides pour les rappels locaux.";
+  }
+
+  els.notifNotice.textContent =
+    "Rappels locaux activés. Ils se remettent à jour automatiquement à chaque changement d'horaire mais ne fonctionnent que si l'app reste ouverte ou récemment utilisée. Sur iPhone, gardez l'export .ics comme solution fiable.";
+  scheduleLocalReminders();
 }
 
 function clearNotifTimers() {
@@ -1471,6 +1498,77 @@ function scheduleLocalReminders() {
       notifTimers.push(id);
     }
   });
+}
+
+/* ---------- NOTIFICATIONS PUSH (Cloudflare Worker — service maison, gratuit) ----------
+ * Web Push standard (RFC 8291/8292) : une fois abonné, le navigateur reçoit la
+ * notification même si l'app/l'onglet est fermé. Le serveur (worker/) est un
+ * Cloudflare Worker gratuit, sans dépendance, déployé séparément par l'utilisateur.
+ */
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+function upcomingWakeTimestamps() {
+  // nextDateForDay renvoie la prochaine occurrence de chaque jour de la
+  // semaine (0 à 6 jours dans le futur) : un wake par jour distinct couvre
+  // donc déjà toute la semaine à venir. Resynchronisé à chaque ouverture
+  // de l'app pour couvrir la semaine suivante.
+  return state.wakes
+    .map((w) => combineDateTime(nextDateForDay(w.day), w.wake).toISOString())
+    .sort();
+}
+
+async function subscribeToPush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    let subscription = await registration.pushManager.getSubscription();
+    if (!subscription) {
+      subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(state.pushVapidKey),
+      });
+    }
+    return sendPushSubscriptionToServer(subscription);
+  } catch (err) {
+    console.warn("Abonnement push impossible", err);
+    return false;
+  }
+}
+
+async function sendPushSubscriptionToServer(subscription) {
+  try {
+    const res = await fetch(`${state.pushUrl.replace(/\/$/, "")}/subscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Push-Secret": state.pushSecret || "" },
+      body: JSON.stringify({
+        subscription: subscription.toJSON(),
+        targetName: state.targetName,
+        wakeTimes: upcomingWakeTimestamps(),
+      }),
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn("Synchronisation push impossible", err);
+    return false;
+  }
+}
+
+async function syncPushIfEnabled() {
+  if (!state.notifEnabled || !state.pushUrl || !("serviceWorker" in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (subscription) sendPushSubscriptionToServer(subscription);
+  } catch (err) {
+    console.warn("Synchronisation push impossible", err);
+  }
 }
 
 /* ---------- CHECK TODAY ---------- */
@@ -1580,6 +1678,9 @@ function loadState() {
     els.originInput.value = state.origin || "";
     els.destInput.value = state.dest || "";
     els.navitiaKeyInput.value = state.navitiaKey || "";
+    els.pushUrlInput.value = state.pushUrl || "";
+    if (state.pushVapidKey) els.pushVapidInput.value = state.pushVapidKey;
+    els.pushSecretInput.value = state.pushSecret || "";
     const validModes = [...Object.keys(OSRM_PROFILES), "TRANSIT"];
     els.travelMode.value = validModes.includes(state.mode) ? state.mode : "DRIVING";
     updateNavitiaFieldVisibility();
