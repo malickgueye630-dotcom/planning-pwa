@@ -199,6 +199,19 @@
       </div>
     </div>
     <div class="schedule" id="wakeList"></div>
+
+    <p class="field-note">
+      Ajoute automatiquement quelques minutes de marge les jours où pluie, neige
+      ou verglas sont prévus à l'heure de votre trajet (prévisions
+      <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>,
+      gratuites, sans clé). Nécessite l'adresse de départ renseignée dans la carte Trajet.
+    </p>
+    <button class="btn btn--ghost btn--full" id="weatherBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"></path><path d="M16 17v3M12 17v3M8 17v3"></path></svg>
+      Calculer l'ajustement météo
+    </button>
+    <p class="check-result" id="weatherResult"></p>
+    <button class="link-btn" id="weatherClearBtn">Désactiver l'ajustement météo</button>
   </section>
 
   <!-- STEP 5 : CALENDRIER -->

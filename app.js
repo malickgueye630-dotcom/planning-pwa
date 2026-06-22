@@ -17,6 +17,7 @@ let state = {
   navitiaKey: "",    // free Navitia API key, only needed for TRANSIT mode
   schedule: [],   // [{day, type, start, end}]
   wakes: [],      // [{day, wake, start}]
+  weatherAdjust: {},   // {day: extraMinutes} — pluie/neige détectées via Open-Meteo
   theme: "dark",       // dark | light
   notifEnabled: false,  // re-armed automatically whenever the schedule changes
 };
@@ -69,6 +70,9 @@ const els = {
   travelTime: $("travelTime"),
   marginTime: $("marginTime"),
   wakeList: $("wakeList"),
+  weatherBtn: $("weatherBtn"),
+  weatherResult: $("weatherResult"),
+  weatherClearBtn: $("weatherClearBtn"),
   cardCalendar: $("cardCalendar"),
   downloadIcsBtn: $("downloadIcsBtn"),
   notifBtn: $("notifBtn"),
@@ -141,6 +145,8 @@ els.navitiaKeyInput.addEventListener("change", () => {
   saveState();
 });
 els.calcTravelBtn.addEventListener("click", calcTravel);
+els.weatherBtn.addEventListener("click", calcWeatherAdjustment);
+els.weatherClearBtn.addEventListener("click", clearWeatherAdjustment);
 els.downloadIcsBtn.addEventListener("click", downloadIcs);
 els.notifBtn.addEventListener("click", enableNotifications);
 els.checkTodayBtn.addEventListener("click", checkToday);
@@ -833,9 +839,10 @@ function recalcWakes() {
   const wakes = state.schedule
     .filter((e) => e.type === "work" && e.start)
     .map((e) => {
-      const totalMin = state.prep + state.travel + state.margin;
+      const weatherExtra = (state.weatherAdjust && state.weatherAdjust[e.day]) || 0;
+      const totalMin = state.prep + state.travel + state.margin + weatherExtra;
       const wake = subtractMinutes(e.start, totalMin);
-      return { day: e.day, wake, start: e.start };
+      return { day: e.day, wake, start: e.start, weatherExtra };
     });
 
   state.wakes = wakes;
@@ -872,7 +879,7 @@ function renderWakes() {
     row.innerHTML = `
       <div>
         <div class="wake-row__day">${w.day}</div>
-        <div class="wake-row__sub">prise de poste ${w.start}</div>
+        <div class="wake-row__sub">prise de poste ${w.start}${w.weatherExtra ? ` · +${w.weatherExtra} min météo` : ""}</div>
       </div>
       <div class="wake-row__time">${w.wake}</div>
     `;
@@ -1240,6 +1247,95 @@ function renderTravelMap(originPt, destPt, geometry) {
   }, 50);
 }
 
+/* ---------- RÉVEIL ADAPTÉ À LA MÉTÉO (Open-Meteo — gratuit, sans clé) ----------
+ * Ajoute quelques minutes de marge au réveil les jours où de la pluie, de la
+ * neige ou du verglas sont prévus à l'heure du trajet, en se basant sur les
+ * prévisions horaires Open-Meteo pour l'adresse de départ déjà saisie dans
+ * la carte Trajet. Open-Meteo ne demande ni compte ni clé API.
+ */
+const WEATHER_RAIN_CODES = new Set([51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99]);
+const WEATHER_SNOW_CODES = new Set([71, 73, 75, 77, 85, 86]);
+
+function weatherExtraMinutes(hour) {
+  if (!hour) return 0;
+  if (hour.snowfall > 0 || WEATHER_SNOW_CODES.has(hour.weathercode)) return 20;
+  if (hour.precipitation > 0 || WEATHER_RAIN_CODES.has(hour.weathercode)) return 10;
+  return 0;
+}
+
+function weatherLabel(hour) {
+  if (hour.snowfall > 0 || WEATHER_SNOW_CODES.has(hour.weathercode)) return "neige/verglas";
+  if (hour.precipitation > 0 || WEATHER_RAIN_CODES.has(hour.weathercode)) return "pluie";
+  return "";
+}
+
+async function fetchHourlyForecast(point) {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+    "&hourly=precipitation,snowfall,weathercode&timezone=auto&forecast_days=7";
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("WEATHER_HTTP");
+  return res.json();
+}
+
+function findForecastHour(forecast, date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const key =
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:00`;
+  const idx = forecast.hourly.time.indexOf(key);
+  if (idx === -1) return null;
+  return {
+    precipitation: forecast.hourly.precipitation[idx],
+    snowfall: forecast.hourly.snowfall[idx],
+    weathercode: forecast.hourly.weathercode[idx],
+  };
+}
+
+async function calcWeatherAdjustment() {
+  if (!state.origin) {
+    els.weatherResult.textContent = "Renseignez d'abord votre adresse de départ dans la carte Trajet.";
+    return;
+  }
+  els.weatherBtn.disabled = true;
+  els.weatherResult.textContent = "Récupération des prévisions météo…";
+  try {
+    const origin = await geocodeAddress(state.origin);
+    const forecast = await fetchHourlyForecast(origin);
+
+    const notes = [];
+    const adjust = {};
+    state.schedule.forEach((entry) => {
+      if (entry.type !== "work" || !entry.start) return;
+      const startDate = combineDateTime(nextDateForDay(entry.day), entry.start);
+      const hour = findForecastHour(forecast, startDate);
+      const extra = weatherExtraMinutes(hour);
+      if (extra > 0) {
+        adjust[entry.day] = extra;
+        notes.push(`${entry.day} : +${extra} min (${weatherLabel(hour)} prévue à ${entry.start})`);
+      }
+    });
+
+    state.weatherAdjust = adjust;
+    saveState();
+    recalcWakes();
+
+    els.weatherResult.textContent = notes.length
+      ? "Ajustement appliqué :\n" + notes.join("\n")
+      : "Pas de pluie ni de neige prévue sur les 7 prochains jours : aucun ajustement nécessaire.";
+  } catch (err) {
+    els.weatherResult.textContent = "Impossible de récupérer les prévisions météo. Réessayez plus tard.";
+  } finally {
+    els.weatherBtn.disabled = false;
+  }
+}
+
+function clearWeatherAdjustment() {
+  state.weatherAdjust = {};
+  saveState();
+  recalcWakes();
+  els.weatherResult.textContent = "Ajustement météo désactivé.";
+}
+
 /* ---------- ICS EXPORT ---------- */
 function downloadIcs() {
   if (state.schedule.filter((e) => e.type === "work" && e.start).length === 0) {
@@ -1267,7 +1363,7 @@ function downloadIcs() {
     }
 
     const wake = state.wakes.find((w) => w.day === entry.day);
-    const totalMin = state.prep + state.travel + state.margin;
+    const totalMin = state.prep + state.travel + state.margin + (wake ? wake.weatherExtra : 0);
 
     lines.push("BEGIN:VEVENT");
     lines.push(`UID:${cryptoRandom()}@monplanning`);
