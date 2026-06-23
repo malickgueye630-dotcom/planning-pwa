@@ -180,8 +180,12 @@ function applyTheme(theme) {
 function handleImage(file) {
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = (e) => {
-    currentImageDataUrl = e.target.result;
+  reader.onload = async (e) => {
+    // Les photos de planning prises au téléphone peuvent peser plusieurs Mo
+    // (et donc occuper bien plus en mémoire une fois décodées) ; on les
+    // ramène tout de suite à une taille raisonnable pour éviter qu'un
+    // téléphone avec peu de RAM ne recharge la page pendant le traitement.
+    currentImageDataUrl = await resizeForUpload(e.target.result, 2200).catch(() => e.target.result);
     cropImageDataUrl = null;
     els.preview.src = currentImageDataUrl;
     els.preview.hidden = false;
