@@ -1,4 +1,4 @@
-const CACHE_NAME = "mon-planning-v9";
+const CACHE_NAME = "mon-planning-v10";
 const ASSETS = [
   "./",
   "./index.html",
@@ -26,24 +26,23 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Network-first for the Tesseract.js CDN script, cache-first for local assets.
+  // Network-first pour les fichiers locaux : on veut toujours la dernière
+  // version déployée quand le téléphone est connecté (sinon une mise à jour
+  // de l'app peut rester invisible indéfiniment, l'ancien cache continuant
+  // à répondre avant même d'essayer le réseau). Le cache ne sert que de
+  // repli hors-ligne.
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) {
     return; // let CDN requests pass straight through to the network
   }
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      return (
-        cached ||
-        fetch(event.request)
-          .then((response) => {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
-            return response;
-          })
-          .catch(() => cached)
-      );
-    })
+    fetch(event.request)
+      .then((response) => {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        return response;
+      })
+      .catch(() => caches.match(event.request))
   );
 });
 
