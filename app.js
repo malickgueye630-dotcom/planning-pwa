@@ -63,6 +63,7 @@ const els = {
   ocrProgressBar: $("ocrProgressBar"),
   ocrProgressLabel: $("ocrProgressLabel"),
   cardResult: $("cardResult"),
+  analysisResult: $("analysisResult"),
   scheduleList: $("scheduleList"),
   addDayBtn: $("addDayBtn"),
   cardTravel: $("cardTravel"),
@@ -523,7 +524,7 @@ function startManualMode() {
   els.cardTravel.hidden = false;
   els.cardSettings.hidden = false;
   els.cardCalendar.hidden = false;
-  els.checkResult.textContent = "Mode manuel : saisissez vos horaires jour par jour ci-dessous.";
+  els.analysisResult.textContent = "Mode manuel : saisissez vos horaires jour par jour ci-dessous.";
   recalcWakes();
   refreshTodaySummary();
   els.cardResult.scrollIntoView({ behavior: "smooth" });
@@ -626,20 +627,20 @@ async function runOcr() {
     const confidence = assessConfidence(parsed);
 
     if (parsed.length === 0) {
-      els.checkResult.textContent =
+      els.analysisResult.textContent =
         `Le nom "${state.targetName}" n'a pas été détecté avec certitude sur cette image. ` +
         (aiFailed ? `Le serveur d'analyse IA n'a pas répondu (vérifiez l'URL configurée). ` : "") +
         `Une semaine vierge est affichée ci-dessous : complétez-la manuellement, ou essayez ` +
         `"Recadrer sur ma ligne MALICK" pour zoomer sur la bonne ligne avant de relancer l'analyse.`;
       state.schedule = defaultEditableWeek();
     } else if (!confidence.reliable) {
-      els.checkResult.textContent =
+      els.analysisResult.textContent =
         `"${state.targetName}" a été repéré, mais plusieurs horaires sont incertains ` +
         `(${confidence.missing} jour(s) sans heure claire). Vérifiez et complétez la semaine ` +
         `ci-dessous avant de générer le calendrier.`;
       state.schedule = parsed;
     } else {
-      els.checkResult.textContent = "";
+      els.analysisResult.textContent = "";
       state.schedule = parsed;
     }
 
@@ -655,7 +656,7 @@ async function runOcr() {
     els.cardResult.scrollIntoView({ behavior: "smooth" });
   } catch (err) {
     console.error(err);
-    els.checkResult.textContent = "Erreur pendant la lecture de l'image. Réessayez avec une photo plus nette, ou utilisez le mode manuel rapide.";
+    els.analysisResult.textContent = "Erreur pendant la lecture de l'image. Réessayez avec une photo plus nette, ou utilisez le mode manuel rapide.";
   } finally {
     els.ocrProgress.hidden = true;
     els.analyzeBtn.disabled = false;
