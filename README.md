@@ -191,6 +191,13 @@ Le bouton **Activer les rappels de réveil** propose deux modes :
    npx wrangler secret put PUSH_SECRET
    # une chaîne aléatoire de votre choix, ex. générée avec : openssl rand -hex 32
    ```
+   Pour que l'app lise automatiquement les horaires sur la photo (étape 3 du
+   guide principal), configurez aussi une clé Gemini, **obligatoire** sinon
+   l'analyse échoue systématiquement avec l'erreur `gemini_not_configured` :
+   ```bash
+   npx wrangler secret put GEMINI_API_KEY
+   # une clé créée sur https://aistudio.google.com/app/apikey (gratuite)
+   ```
 4. Déployez :
    ```bash
    npx wrangler deploy
