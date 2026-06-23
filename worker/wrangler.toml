@@ -9,4 +9,4 @@ crons = ["* * * * *"]
 
 [[kv_namespaces]]
 binding = "SUBS"
-id = "REMPLACE_PAR_TON_ID_DE_NAMESPACE_KV"
+id = "83dab0c2ee6b40f2a6518a91df89344d"
