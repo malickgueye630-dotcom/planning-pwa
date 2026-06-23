@@ -544,6 +544,25 @@ async function resizeForUpload(dataUrl, maxDim) {
   return canvas.toDataURL("image/jpeg", 0.85);
 }
 
+/**
+ * Traduit l'erreur technique d'analyzeWithGemini en message compréhensible,
+ * pour pouvoir diagnostiquer un échec serveur sans avoir besoin d'inspecter
+ * la console du téléphone.
+ */
+function describeAiError(err) {
+  const msg = (err && err.message) || "";
+  if (err instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "impossible de contacter le serveur (URL incorrecte, serveur éteint, ou pas de réseau)";
+  }
+  if (msg === "forbidden") return "code secret refusé par le serveur (vérifiez le champ \"Code secret partagé\")";
+  if (msg === "gemini_not_configured") return "la clé Gemini n'est pas configurée sur le serveur";
+  if (msg === "gemini_failed") return "Gemini n'a pas réussi à analyser la photo (clé invalide, quota dépassé, ou image refusée)";
+  if (msg === "bad_request") return "image manquante ou invalide envoyée au serveur";
+  if (msg === "bad_schedule_response" || msg === "bad_json") return "réponse du serveur illisible";
+  if (/^analyze_http_(\d+)$/.test(msg)) return `le serveur a répondu une erreur HTTP ${msg.split("_").pop()}`;
+  return msg || "erreur inconnue";
+}
+
 async function analyzeWithGemini(imageDataUrl, targetName) {
   const upload = await resizeForUpload(imageDataUrl, 1600);
   const res = await fetch(`${state.pushUrl.replace(/\/$/, "")}/analyze-schedule`, {
@@ -604,6 +623,7 @@ async function runOcr() {
 
   const baseImage = cropImageDataUrl || currentImageDataUrl;
   let aiFailed = false;
+  let aiFailReason = "";
 
   try {
     let parsed = null;
@@ -615,12 +635,18 @@ async function runOcr() {
       } catch (err) {
         console.error("Échec de l'analyse IA, repli sur la lecture locale", err);
         aiFailed = true;
+        aiFailReason = describeAiError(err);
       }
     }
 
     if (!parsed) {
       setProgress(10, aiFailed ? "Repli sur la lecture locale…" : "Lecture locale (OCR)…");
-      parsed = await runLocalOcr(baseImage);
+      try {
+        parsed = await runLocalOcr(baseImage);
+      } catch (err) {
+        console.error("Échec de la lecture locale (OCR)", err);
+        parsed = [];
+      }
     }
 
     setProgress(100, "Analyse terminée…");
@@ -629,12 +655,13 @@ async function runOcr() {
     if (parsed.length === 0) {
       els.analysisResult.textContent =
         `Le nom "${state.targetName}" n'a pas été détecté avec certitude sur cette image. ` +
-        (aiFailed ? `Le serveur d'analyse IA n'a pas répondu (vérifiez l'URL configurée). ` : "") +
+        (aiFailed ? `Le serveur d'analyse IA a échoué (${aiFailReason}). ` : "") +
         `Une semaine vierge est affichée ci-dessous : complétez-la manuellement, ou essayez ` +
         `"Recadrer sur ma ligne MALICK" pour zoomer sur la bonne ligne avant de relancer l'analyse.`;
       state.schedule = defaultEditableWeek();
     } else if (!confidence.reliable) {
       els.analysisResult.textContent =
+        (aiFailed ? `Le serveur d'analyse IA a échoué (${aiFailReason}), repli sur la lecture locale. ` : "") +
         `"${state.targetName}" a été repéré, mais plusieurs horaires sont incertains ` +
         `(${confidence.missing} jour(s) sans heure claire). Vérifiez et complétez la semaine ` +
         `ci-dessous avant de générer le calendrier.`;
