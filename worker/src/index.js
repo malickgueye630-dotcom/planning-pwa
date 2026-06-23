@@ -6,8 +6,12 @@
    npm, pas de module Node "https" (non disponible côté Workers).
 
    Routes :
-     POST /subscribe    { subscription, targetName, wakeTimes[] }
-     POST /unsubscribe  { subscription }
+     POST /subscribe         { subscription, targetName, wakeTimes[] }
+     POST /unsubscribe       { subscription }
+     POST /analyze-schedule  { image: dataURL, targetName }
+       → proxy vers l'API Gemini (Google AI Studio, gratuite) pour lire
+         la photo du planning côté serveur, en gardant la clé API secrète
+         hors du code client (visible par n'importe qui dans une PWA).
 
    Cron (chaque minute) : envoie une notification push à chaque abonné
    dont une heure de réveil stockée tombe dans la minute en cours.
@@ -16,6 +20,8 @@
 const SEND_WINDOW_MS = 90 * 1000; // marge anti-décalage de cron
 const RETENTION_MS = 24 * 3600 * 1000; // nettoyage des heures passées
 const MAX_WAKE_TIMES = 14;
+const GEMINI_MODEL = "gemini-2.0-flash";
+const SCHEDULE_DAYS = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
 /* ---------- Encodage ---------- */
 function base64urlToBytes(base64url) {
@@ -211,6 +217,112 @@ async function handleUnsubscribe(request, env) {
   return json({ ok: true });
 }
 
+/* ---------- Analyse IA (Gemini Vision, gratuit) ---------- */
+function buildSchedulePrompt(targetName) {
+  return (
+    `Tu reçois la photo d'un planning hebdomadaire de travail : un tableau avec une colonne ` +
+    `de noms d'employés et une colonne par jour de la semaine (Lundi à Dimanche).\n` +
+    `Trouve la ligne de l'employé dont le nom se rapproche le plus de "${targetName}" ` +
+    `(la photo peut être floue, prise de travers, ou contenir des fautes d'OCR — utilise le ` +
+    `nom le plus proche visible dans la colonne des noms).\n` +
+    `Pour CHAQUE jour de la semaine, du Lundi au Dimanche (toujours 7 jours, même si certains ` +
+    `sont vides ou illisibles), donne :\n` +
+    `- "type":"work" avec "start" et "end" au format 24h "HH:MM" si l'employé travaille ce jour,\n` +
+    `- "type":"repos" (sans horaire) si le jour est marqué REPOS / OFF,\n` +
+    `- "type":"formation" si le jour est marqué FORMATION,\n` +
+    `- "type":"conge" si le jour est marqué CONGÉS / VACANCES / ABSENT,\n` +
+    `- "type":"unknown" si tu ne trouves pas la ligne de l'employé, ou si ce jour précis est illisible.\n` +
+    `Réponds STRICTEMENT avec un tableau JSON de 7 objets (un par jour, dans l'ordre Lundi, Mardi, ` +
+    `Mercredi, Jeudi, Vendredi, Samedi, Dimanche), sans aucun texte avant ou après, par exemple :\n` +
+    `[{"day":"Lundi","type":"work","start":"09:00","end":"17:00"},` +
+    `{"day":"Mardi","type":"repos","start":"","end":""}, ...]`
+  );
+}
+
+async function callGemini(env, base64Data, mimeType, targetName) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${env.GEMINI_API_KEY}`;
+  const body = {
+    contents: [
+      {
+        parts: [
+          { text: buildSchedulePrompt(targetName) },
+          { inline_data: { mime_type: mimeType, data: base64Data } },
+        ],
+      },
+    ],
+    generationConfig: { temperature: 0, responseMimeType: "application/json" },
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`gemini_http_${res.status}: ${errText.slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("gemini_empty_response");
+  return text;
+}
+
+function normalizeDayType(t) {
+  return ["work", "repos", "formation", "conge", "unknown"].includes(t) ? t : "unknown";
+}
+
+function sanitizeScheduleJson(rawText) {
+  let parsedArr;
+  try {
+    parsedArr = JSON.parse(rawText);
+  } catch {
+    const match = rawText.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error("not_json");
+    parsedArr = JSON.parse(match[0]);
+  }
+  if (!Array.isArray(parsedArr)) throw new Error("not_array");
+
+  return SCHEDULE_DAYS.map((day) => {
+    const found = parsedArr.find((e) => e && typeof e.day === "string" && e.day.toLowerCase() === day.toLowerCase());
+    const type = normalizeDayType(found && found.type);
+    if (type === "work") {
+      const start = typeof found.start === "string" ? found.start : "";
+      const end = typeof found.end === "string" ? found.end : "";
+      return { day, type: "work", start, end };
+    }
+    if (type === "conge") return { day, type: "repos", start: "", end: "" };
+    if (type === "unknown") return { day, type: "work", start: "", end: "" }; // jour incertain, signalé côté client
+    return { day, type, start: "", end: "" };
+  });
+}
+
+async function handleAnalyzeSchedule(request, env) {
+  if (!isAuthorized(request, env)) return json({ error: "forbidden" }, 403);
+  if (!env.GEMINI_API_KEY) return json({ error: "gemini_not_configured" }, 500);
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "bad_json" }, 400);
+  }
+
+  const image = typeof body.image === "string" ? body.image : "";
+  const targetName = typeof body.targetName === "string" ? body.targetName.slice(0, 40) : "";
+  const match = image.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match || !targetName) return json({ error: "bad_request" }, 400);
+  const [, mimeType, base64Data] = match;
+
+  try {
+    const rawText = await callGemini(env, base64Data, mimeType, targetName);
+    const schedule = sanitizeScheduleJson(rawText);
+    return json({ schedule });
+  } catch (err) {
+    console.error("Échec d'analyse Gemini", err);
+    return json({ error: "gemini_failed" }, 502);
+  }
+}
+
 /* ---------- Cron : envoie les notifications dues ---------- */
 async function handleScheduled(env) {
   const vapid = {
@@ -278,6 +390,7 @@ export default {
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/subscribe") return handleSubscribe(request, env);
     if (request.method === "POST" && url.pathname === "/unsubscribe") return handleUnsubscribe(request, env);
+    if (request.method === "POST" && url.pathname === "/analyze-schedule") return handleAnalyzeSchedule(request, env);
     return json({ error: "not_found" }, 404);
   },
   async scheduled(event, env) {

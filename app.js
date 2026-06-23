@@ -525,7 +525,70 @@ function startManualMode() {
   els.cardResult.scrollIntoView({ behavior: "smooth" });
 }
 
-/* ---------- OCR ---------- */
+/* ---------- ANALYSE IA (Gemini, via le serveur Cloudflare Worker) ---------- */
+async function resizeForUpload(dataUrl, maxDim) {
+  const img = await loadImageEl(dataUrl);
+  const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.max(1, Math.round(img.naturalWidth * scale));
+  const h = Math.max(1, Math.round(img.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(img, 0, 0, w, h);
+  return canvas.toDataURL("image/jpeg", 0.85);
+}
+
+async function analyzeWithGemini(imageDataUrl, targetName) {
+  const upload = await resizeForUpload(imageDataUrl, 1600);
+  const res = await fetch(`${state.pushUrl.replace(/\/$/, "")}/analyze-schedule`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Push-Secret": state.pushSecret || "" },
+    body: JSON.stringify({ image: upload, targetName }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.error) throw new Error((data && data.error) || `analyze_http_${res.status}`);
+  if (!Array.isArray(data.schedule)) throw new Error("bad_schedule_response");
+  return data.schedule
+    .map((e) => ({
+      day: DAYS.includes(e.day) ? e.day : "",
+      type: ["work", "repos", "formation"].includes(e.type) ? e.type : "work",
+      start: typeof e.start === "string" ? e.start : "",
+      end: typeof e.end === "string" ? e.end : "",
+    }))
+    .filter((e) => e.day);
+}
+
+/* ---------- OCR LOCAL (repli si le serveur d'analyse n'est pas configuré) ---------- */
+async function runLocalOcr(baseImage) {
+  const enhance = els.enhanceToggle.checked;
+  const ocrSource = enhance ? await preprocessImage(baseImage, 3) : baseImage;
+
+  setProgress(10, "Initialisation…");
+
+  const result = await Tesseract.recognize(ocrSource, "fra", {
+    logger: (m) => {
+      if (m.status === "recognizing text") {
+        setProgress(10 + Math.round(m.progress * 85), "Lecture en cours…");
+      } else if (m.status) {
+        setProgress(10, capitalize(m.status) + "…");
+      }
+    },
+  });
+
+  setProgress(95, "Recherche de votre ligne…");
+  const text = result.data.text;
+  const baseImg = await loadImageEl(baseImage);
+  const ocrScale = enhance ? 3 : 1;
+  const fromGeometry = await parsePlanningFromWordsWithZoom(
+    result.data.blocks,
+    state.targetName,
+    baseImg,
+    ocrScale
+  );
+  return fromGeometry || parsePlanning(text, state.targetName);
+}
+
 async function runOcr() {
   if (!currentImageDataUrl) return;
   state.targetName = els.targetName.value.trim().toUpperCase() || "MALICK";
@@ -534,40 +597,34 @@ async function runOcr() {
   els.ocrProgress.hidden = false;
   setProgress(0, "Préparation de l'image…");
 
+  const baseImage = cropImageDataUrl || currentImageDataUrl;
+  let aiFailed = false;
+
   try {
-    const baseImage = cropImageDataUrl || currentImageDataUrl;
-    const enhance = els.enhanceToggle.checked;
-    const ocrSource = enhance ? await preprocessImage(baseImage, 3) : baseImage;
+    let parsed = null;
 
-    setProgress(10, "Initialisation…");
+    if (state.pushUrl) {
+      setProgress(20, "Analyse par IA (Gemini)…");
+      try {
+        parsed = await analyzeWithGemini(baseImage, state.targetName);
+      } catch (err) {
+        console.error("Échec de l'analyse IA, repli sur la lecture locale", err);
+        aiFailed = true;
+      }
+    }
 
-    const result = await Tesseract.recognize(ocrSource, "fra", {
-      logger: (m) => {
-        if (m.status === "recognizing text") {
-          setProgress(10 + Math.round(m.progress * 85), "Lecture en cours…");
-        } else if (m.status) {
-          setProgress(10, capitalize(m.status) + "…");
-        }
-      },
-    });
+    if (!parsed) {
+      setProgress(10, aiFailed ? "Repli sur la lecture locale…" : "Lecture locale (OCR)…");
+      parsed = await runLocalOcr(baseImage);
+    }
 
-    setProgress(95, "Recherche de votre ligne…");
-    const text = result.data.text;
-    const baseImg = await loadImageEl(baseImage);
-    const ocrScale = enhance ? 3 : 1;
-    const fromGeometry = await parsePlanningFromWordsWithZoom(
-      result.data.blocks,
-      state.targetName,
-      baseImg,
-      ocrScale
-    );
-    setProgress(100, "Analyse du texte…");
-    const parsed = fromGeometry || parsePlanning(text, state.targetName);
+    setProgress(100, "Analyse terminée…");
     const confidence = assessConfidence(parsed);
 
     if (parsed.length === 0) {
       els.checkResult.textContent =
         `Le nom "${state.targetName}" n'a pas été détecté avec certitude sur cette image. ` +
+        (aiFailed ? `Le serveur d'analyse IA n'a pas répondu (vérifiez l'URL configurée). ` : "") +
         `Une semaine vierge est affichée ci-dessous : complétez-la manuellement, ou essayez ` +
         `"Recadrer sur ma ligne MALICK" pour zoomer sur la bonne ligne avant de relancer l'analyse.`;
       state.schedule = defaultEditableWeek();

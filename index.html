@@ -106,6 +106,21 @@
         <input type="checkbox" id="enhanceToggle" checked>
         Améliorer l'image avant lecture (zoom, contraste, netteté)
       </label>
+      <p class="field-note">Ne s'applique qu'à la lecture locale (OCR), utilisée si le serveur d'analyse IA ci-dessous n'est pas configuré ou ne répond pas.</p>
+    </div>
+
+    <div class="field">
+      <label for="pushUrlInput">Serveur d'analyse (Cloudflare Worker)</label>
+      <input type="url" id="pushUrlInput" placeholder="https://planning-pwa-push.tonpseudo.workers.dev">
+      <p class="field-note">
+        Utilisé pour lire la photo avec une IA (Gemini, gratuit) côté serveur — bien plus fiable
+        que la lecture locale. Laissez vide pour utiliser uniquement la lecture locale (OCR).
+        C'est le même serveur que celui des notifications push (réglages plus bas).
+      </p>
+    </div>
+    <div class="field">
+      <label for="pushSecretInput">Code secret partagé</label>
+      <input type="text" id="pushSecretInput" placeholder="Même valeur que PUSH_SECRET côté serveur">
     </div>
 
     <button class="btn btn--accent btn--full" id="analyzeBtn" disabled>
@@ -244,22 +259,14 @@
     <details class="push-config" id="pushConfig">
       <summary>Configurer le push (avancé, fonctionne même app fermée)</summary>
       <p class="field-note">
-        Renseigne l'URL de ton service de notifications push (un petit serveur
-        Cloudflare Workers, gratuit) pour recevoir de vraies notifications même
-        quand l'app est fermée. Laisse vide pour garder les rappels locaux
+        Utilise le serveur d'analyse renseigné à l'étape 1 (même URL et même code
+        secret) pour recevoir de vraies notifications même quand l'app est fermée.
+        Laisse l'URL vide là-bas pour garder les rappels locaux uniquement
         (uniquement quand l'app est ouverte).
       </p>
       <div class="field">
-        <label for="pushUrlInput">URL du service push</label>
-        <input type="url" id="pushUrlInput" placeholder="https://planning-pwa-push.tonpseudo.workers.dev">
-      </div>
-      <div class="field">
         <label for="pushVapidInput">Clé publique VAPID</label>
         <input type="text" id="pushVapidInput" value="BNiD8r-zRi3WGa1EWGhv3jPO3xT-rxMH2sVBK_XmmtE63g8iQFbsTgbkYQ34z4s0BXR0cukGJjjFZCBiShnr_f4">
-      </div>
-      <div class="field">
-        <label for="pushSecretInput">Code secret partagé</label>
-        <input type="text" id="pushSecretInput" placeholder="Même valeur que PUSH_SECRET côté serveur">
       </div>
     </details>
 
