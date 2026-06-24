@@ -110,12 +110,23 @@
     </div>
 
     <div class="field">
-      <label for="pushUrlInput">Serveur d'analyse (Cloudflare Worker)</label>
+      <label for="geminiKeyInput">Clé Gemini (lecture IA de la photo, gratuite)</label>
+      <input type="password" id="geminiKeyInput" placeholder="Collez votre clé gratuite ici" autocomplete="off">
+      <p class="field-note">
+        Créez un compte gratuit sur <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com/app/apikey</a>,
+        cliquez sur « Create API key », puis collez la clé ici. Elle reste enregistrée uniquement sur
+        cet appareil et permet de lire la photo bien plus fiablement que la lecture locale (OCR) —
+        sans avoir besoin de configurer de serveur. Laissez vide pour utiliser uniquement la lecture locale.
+      </p>
+    </div>
+
+    <div class="field">
+      <label for="pushUrlInput">Serveur d'analyse (Cloudflare Worker, avancé)</label>
       <input type="url" id="pushUrlInput" placeholder="https://planning-pwa-push.tonpseudo.workers.dev">
       <p class="field-note">
-        Utilisé pour lire la photo avec une IA (Gemini, gratuit) côté serveur — bien plus fiable
-        que la lecture locale. Laissez vide pour utiliser uniquement la lecture locale (OCR).
-        C'est le même serveur que celui des notifications push (réglages plus bas).
+        Optionnel : si vous préférez passer par votre propre serveur plutôt que d'utiliser la clé Gemini
+        ci-dessus directement depuis le téléphone. Inutile si la clé Gemini est renseignée. C'est le même
+        serveur que celui des notifications push (réglages plus bas).
       </p>
     </div>
     <div class="field">

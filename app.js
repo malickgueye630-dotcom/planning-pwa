@@ -23,6 +23,7 @@ let state = {
   pushUrl: "",       // URL du service de notifications push (Cloudflare Worker)
   pushVapidKey: "",  // clé publique VAPID correspondante
   pushSecret: "",    // doit correspondre au secret PUSH_SECRET côté serveur
+  geminiKey: "",     // clé Gemini perso, pour analyser la photo directement depuis le téléphone
 };
 
 let currentImageDataUrl = null;   // full original photo (data URL)
@@ -91,6 +92,7 @@ const els = {
   pushUrlInput: $("pushUrlInput"),
   pushVapidInput: $("pushVapidInput"),
   pushSecretInput: $("pushSecretInput"),
+  geminiKeyInput: $("geminiKeyInput"),
   checkTodayBtn: $("checkTodayBtn"),
   checkResult: $("checkResult"),
   historyList: $("historyList"),
@@ -167,6 +169,7 @@ els.weatherBtn.addEventListener("click", calcWeatherAdjustment);
 els.weatherClearBtn.addEventListener("click", clearWeatherAdjustment);
 els.downloadIcsBtn.addEventListener("click", downloadIcs);
 els.notifBtn.addEventListener("click", enableNotifications);
+els.geminiKeyInput.addEventListener("change", () => { state.geminiKey = els.geminiKeyInput.value.trim(); saveState(); });
 els.pushUrlInput.addEventListener("change", () => { state.pushUrl = els.pushUrlInput.value.trim(); saveState(); });
 els.pushVapidInput.addEventListener("change", () => { state.pushVapidKey = els.pushVapidInput.value.trim(); saveState(); });
 els.pushSecretInput.addEventListener("change", () => { state.pushSecret = els.pushSecretInput.value.trim(); saveState(); });
@@ -559,7 +562,15 @@ function describeAiError(err) {
   if (msg === "gemini_failed") return "Gemini n'a pas réussi à analyser la photo (clé invalide, quota dépassé, ou image refusée)";
   if (msg === "bad_request") return "image manquante ou invalide envoyée au serveur";
   if (msg === "bad_schedule_response" || msg === "bad_json") return "réponse du serveur illisible";
+  if (msg === "gemini_empty_response") return "Gemini n'a renvoyé aucun résultat (image probablement refusée ou illisible)";
   if (/^analyze_http_(\d+)$/.test(msg)) return `le serveur a répondu une erreur HTTP ${msg.split("_").pop()}`;
+  if (/^gemini_http_(\d+)/.test(msg)) {
+    const status = msg.match(/^gemini_http_(\d+)/)[1];
+    if (status === "400") return "clé Gemini invalide ou requête refusée (vérifiez la clé collée)";
+    if (status === "403") return "clé Gemini refusée par Google (vérifiez qu'elle est activée et copiée en entier)";
+    if (status === "429") return "quota Gemini gratuit dépassé pour aujourd'hui (réessayez plus tard)";
+    return `Gemini a répondu une erreur HTTP ${status}`;
+  }
   return msg || "erreur inconnue";
 }
 
@@ -581,6 +592,93 @@ async function analyzeWithGemini(imageDataUrl, targetName) {
       end: typeof e.end === "string" ? e.end : "",
     }))
     .filter((e) => e.day);
+}
+
+/* ---------- Analyse IA en appelant Gemini directement depuis le téléphone
+   (sans passer par le Worker), pour les utilisateurs qui ont une clé Gemini
+   perso mais ne veulent pas déployer/configurer de serveur. ---------- */
+const GEMINI_MODEL = "gemini-2.0-flash";
+
+function buildSchedulePrompt(targetName) {
+  return (
+    `Tu reçois la photo d'un planning hebdomadaire de travail : un tableau avec une colonne ` +
+    `de noms d'employés et une colonne par jour de la semaine (Lundi à Dimanche).\n` +
+    `Trouve la ligne de l'employé dont le nom se rapproche le plus de "${targetName}" ` +
+    `(la photo peut être floue, prise de travers, ou contenir des fautes d'OCR — utilise le ` +
+    `nom le plus proche visible dans la colonne des noms).\n` +
+    `Pour CHAQUE jour de la semaine, du Lundi au Dimanche (toujours 7 jours, même si certains ` +
+    `sont vides ou illisibles), donne :\n` +
+    `- "type":"work" avec "start" et "end" au format 24h "HH:MM" si l'employé travaille ce jour,\n` +
+    `- "type":"repos" (sans horaire) si le jour est marqué REPOS / OFF,\n` +
+    `- "type":"formation" si le jour est marqué FORMATION,\n` +
+    `- "type":"conge" si le jour est marqué CONGÉS / VACANCES / ABSENT,\n` +
+    `- "type":"unknown" si tu ne trouves pas la ligne de l'employé, ou si ce jour précis est illisible.\n` +
+    `Réponds STRICTEMENT avec un tableau JSON de 7 objets (un par jour, dans l'ordre Lundi, Mardi, ` +
+    `Mercredi, Jeudi, Vendredi, Samedi, Dimanche), sans aucun texte avant ou après, par exemple :\n` +
+    `[{"day":"Lundi","type":"work","start":"09:00","end":"17:00"},` +
+    `{"day":"Mardi","type":"repos","start":"","end":""}, ...]`
+  );
+}
+
+function normalizeDayType(t) {
+  return ["work", "repos", "formation", "conge", "unknown"].includes(t) ? t : "unknown";
+}
+
+function sanitizeScheduleJson(rawText) {
+  let parsedArr;
+  try {
+    parsedArr = JSON.parse(rawText);
+  } catch {
+    const match = rawText.match(/\[[\s\S]*\]/);
+    if (!match) throw new Error("bad_json");
+    parsedArr = JSON.parse(match[0]);
+  }
+  if (!Array.isArray(parsedArr)) throw new Error("bad_json");
+
+  return DAYS.map((day) => {
+    const found = parsedArr.find((e) => e && typeof e.day === "string" && e.day.toLowerCase() === day.toLowerCase());
+    const type = normalizeDayType(found && found.type);
+    if (type === "work") {
+      const start = typeof found.start === "string" ? found.start : "";
+      const end = typeof found.end === "string" ? found.end : "";
+      return { day, type: "work", start, end };
+    }
+    if (type === "conge") return { day, type: "repos", start: "", end: "" };
+    if (type === "unknown") return { day, type: "work", start: "", end: "" }; // jour incertain, signalé côté client
+    return { day, type, start: "", end: "" };
+  });
+}
+
+async function analyzeWithGeminiDirect(imageDataUrl, targetName) {
+  const upload = await resizeForUpload(imageDataUrl, 1600);
+  const match = upload.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error("bad_image");
+  const [, mimeType, base64Data] = match;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${state.geminiKey}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: buildSchedulePrompt(targetName) },
+            { inline_data: { mime_type: mimeType, data: base64Data } },
+          ],
+        },
+      ],
+      generationConfig: { temperature: 0, responseMimeType: "application/json" },
+    }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`gemini_http_${res.status}${errText ? ": " + errText.slice(0, 200) : ""}`);
+  }
+  const data = await res.json();
+  const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("gemini_empty_response");
+  return sanitizeScheduleJson(text);
 }
 
 /* ---------- OCR LOCAL (repli si le serveur d'analyse n'est pas configuré) ---------- */
@@ -628,10 +726,12 @@ async function runOcr() {
   try {
     let parsed = null;
 
-    if (state.pushUrl) {
+    if (state.geminiKey || state.pushUrl) {
       setProgress(20, "Analyse par IA (Gemini)…");
       try {
-        parsed = await analyzeWithGemini(baseImage, state.targetName);
+        parsed = state.geminiKey
+          ? await analyzeWithGeminiDirect(baseImage, state.targetName)
+          : await analyzeWithGemini(baseImage, state.targetName);
       } catch (err) {
         console.error("Échec de l'analyse IA, repli sur la lecture locale", err);
         aiFailed = true;
@@ -2008,6 +2108,7 @@ function loadState() {
     els.originInput.value = state.origin || "";
     els.destInput.value = state.dest || "";
     els.navitiaKeyInput.value = state.navitiaKey || "";
+    els.geminiKeyInput.value = state.geminiKey || "";
     els.pushUrlInput.value = state.pushUrl || "";
     if (state.pushVapidKey) els.pushVapidInput.value = state.pushVapidKey;
     els.pushSecretInput.value = state.pushSecret || "";
