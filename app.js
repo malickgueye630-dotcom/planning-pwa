@@ -520,14 +520,20 @@ function sharpenCanvas(ctx, w, h) {
 /* ---------- MANUAL MODE ---------- */
 function startManualMode() {
   state.targetName = els.targetName.value.trim().toUpperCase() || "MALICK";
-  state.schedule = defaultEditableWeek();
+  const hasPreviousWeek =
+    Array.isArray(state.schedule) &&
+    state.schedule.length === DAYS.length &&
+    state.schedule.every((e) => DAYS.includes(e.day));
+  state.schedule = hasPreviousWeek ? state.schedule : defaultEditableWeek();
   saveState();
   renderSchedule();
   els.cardResult.hidden = false;
   els.cardTravel.hidden = false;
   els.cardSettings.hidden = false;
   els.cardCalendar.hidden = false;
-  els.analysisResult.textContent = "Mode manuel : saisissez vos horaires jour par jour ci-dessous.";
+  els.analysisResult.textContent = hasPreviousWeek
+    ? "Mode manuel : vos horaires de la semaine précédente sont déjà remplis ci-dessous, ne corrigez que les jours qui ont changé."
+    : "Mode manuel : saisissez vos horaires jour par jour ci-dessous.";
   recalcWakes();
   refreshTodaySummary();
   els.cardResult.scrollIntoView({ behavior: "smooth" });
