@@ -1,0 +1,203 @@
+/* ===========================================================
+   Snake — Nokia 3310 edition
+   =========================================================== */
+:root{
+  --plastic: #2b2c2e;
+  --plastic-light: #45474a;
+  --plastic-dark: #18181a;
+  --lcd-bg: #c7d6a0;
+  --lcd-bg-dark: #b3c489;
+  --lcd-ink: #2e3a1f;
+  --key-bg: #3a3b3d;
+  --key-bg-dark: #232426;
+}
+
+*{ box-sizing: border-box; }
+html,body{ margin:0; padding:0; }
+
+body{
+  min-height: 100vh;
+  background: radial-gradient(900px 600px at 50% -10%, #303236, #0a0a0b 70%);
+  color: #cfd2d6;
+  font-family: "Press Start 2P", monospace;
+  display:flex;
+  flex-direction: column;
+  align-items:center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px 12px 36px;
+}
+
+.back-link{
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: #9aa0a8;
+  text-decoration: none;
+  z-index: 10;
+}
+.back-link:hover{ color: #fff; }
+
+/* ===========================================================
+   PHONE BODY
+   =========================================================== */
+.phone{
+  width: min(360px, 92vw);
+  background: linear-gradient(160deg, var(--plastic-light), var(--plastic) 45%, var(--plastic-dark));
+  border-radius: 34px;
+  padding: 22px 18px 26px;
+  box-shadow:
+    0 30px 70px -20px rgba(0,0,0,0.7),
+    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 -2px 0 rgba(0,0,0,0.4);
+  position: relative;
+}
+.phone::before{
+  /* speaker grille */
+  content:"";
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60px;
+  height: 6px;
+  border-radius: 4px;
+  background: repeating-linear-gradient(90deg, var(--plastic-dark) 0 3px, transparent 3px 6px);
+}
+.phone__brand{
+  text-align:center;
+  font-size: 0.6rem;
+  letter-spacing: 3px;
+  color: #8b8f95;
+  margin: 4px 0 12px;
+}
+
+/* ===========================================================
+   SCREEN
+   =========================================================== */
+.phone__screen-bezel{
+  background: var(--plastic-dark);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+}
+.screen{
+  position: relative;
+  background: linear-gradient(165deg, var(--lcd-bg), var(--lcd-bg-dark));
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.25), inset 0 0 18px rgba(0,0,0,0.25);
+}
+#game{
+  display:block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+.screen__scanlines{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0,0,0,0.06) 0px,
+    rgba(0,0,0,0.06) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
+}
+
+/* ===========================================================
+   SOFT KEY LABELS
+   =========================================================== */
+.phone__row--soft{
+  display:flex;
+  justify-content: space-between;
+  padding: 10px 6px 2px;
+  font-size: 0.5rem;
+  color: #aeb2b8;
+  letter-spacing: 0.5px;
+}
+
+/* ===========================================================
+   KEYPAD
+   =========================================================== */
+.keypad{
+  margin-top: 6px;
+  display:grid;
+  justify-content:center;
+  gap: 8px;
+}
+.navkey, .softkey{
+  appearance:none;
+  border: none;
+  background: linear-gradient(160deg, var(--key-bg), var(--key-bg-dark));
+  color: #e7e9ec;
+  border-radius: 10px;
+  box-shadow:
+    0 3px 0 rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+.navkey:active, .softkey:active{
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.softkey{ width: 64px; height: 30px; justify-self: center; border-radius: 14px; }
+.softkey--left{ grid-column: 1; grid-row: 1; justify-self: start; margin-left: 6px; }
+.softkey--right{ grid-column: 3; grid-row: 1; justify-self: end; margin-right: 6px; }
+
+.navkey-row{
+  grid-column: 1 / span 3;
+  grid-row: 2;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap: 10px;
+}
+.navkey--up{ grid-column: 1 / span 3; grid-row: 1; justify-self: center; }
+.navkey--up, .navkey--down{ width: 54px; height: 26px; }
+.navkey--down{ grid-column: 1 / span 3; grid-row: 3; justify-self: center; }
+.navkey--left, .navkey--right{ width: 26px; height: 54px; }
+.navkey--center{
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(160deg, #4a4c4f, #2a2b2d);
+}
+
+.navkey::after, .softkey::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  margin:auto;
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-color: transparent;
+}
+.navkey--up::after{ top:6px; left:50%; transform:translateX(-50%); border-width:0 6px 7px 6px; border-bottom-color:#cfd2d6; }
+.navkey--down::after{ bottom:6px; top:auto; left:50%; transform:translateX(-50%); border-width:7px 6px 0 6px; border-top-color:#cfd2d6; }
+.navkey--left::after{ left:6px; top:50%; transform:translateY(-50%); border-width:6px 7px 6px 0; border-right-color:#cfd2d6; }
+.navkey--right::after{ right:6px; left:auto; top:50%; transform:translateY(-50%); border-width:6px 0 6px 7px; border-left-color:#cfd2d6; }
+
+.tip{
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: #80858d;
+  text-align:center;
+  max-width: 340px;
+}
+
+@media (max-height: 720px){
+  body{ justify-content: flex-start; }
+}
