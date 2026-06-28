@@ -308,4 +308,22 @@
 
   resetGame();
   requestAnimationFrame(loop);
+
+  // Optional test/debug hook, only attached with ?test=1 — keeps the
+  // production game free of global leakage while allowing automated checks.
+  if (new URLSearchParams(location.search).get("test") === "1") {
+    window.__snake = {
+      getState: () => state,
+      getScore: () => score,
+      getHighScore: () => highScore,
+      getInterval: () => moveInterval,
+      getLength: () => snake.length,
+      getSnake: () => snake.map((s) => ({ x: s.x, y: s.y })),
+      getFood: () => ({ x: food.x, y: food.y }),
+      getDir: () => ({ x: dir.x, y: dir.y }),
+      setFood: (x, y) => { food = { x, y }; },
+      start: startGame,
+      DIRS, COLS, PLAY_ROWS,
+    };
+  }
 })();
