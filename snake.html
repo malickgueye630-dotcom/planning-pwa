@@ -2,47 +2,66 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Snake — Nokia Edition</title>
-<meta name="theme-color" content="#1c1c1c">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Neon Snake</title>
+<meta name="theme-color" content="#05060a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Neon Snake">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="snake.css">
 </head>
 <body>
 
-<a class="back-link" href="index.html">← Mon Planning</a>
+<canvas id="game"></canvas>
 
-<div class="phone">
-  <div class="phone__brand">NOKIA</div>
-
-  <div class="phone__screen-bezel">
-    <div class="screen" id="screen">
-      <canvas id="game" width="384" height="224"></canvas>
-      <div class="screen__scanlines"></div>
-    </div>
+<!-- HUD -->
+<div class="hud" id="hud">
+  <a class="hud__back" href="index.html" aria-label="Retour">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+  </a>
+  <div class="hud__score">
+    <span class="hud__score-value" id="scoreValue">0</span>
+    <span class="hud__score-label">SCORE</span>
   </div>
-
-  <div class="phone__row phone__row--soft">
-    <span class="softlabel" id="softLeftLabel">Menu</span>
-    <span class="softlabel" id="softRightLabel">Son</span>
-  </div>
-
-  <div class="keypad">
-    <button class="softkey softkey--left" id="softLeftBtn" aria-label="Menu / Rejouer"></button>
-    <button class="navkey navkey--up" data-dir="up" aria-label="Haut"></button>
-    <div class="navkey-row">
-      <button class="navkey navkey--left" data-dir="left" aria-label="Gauche"></button>
-      <button class="navkey navkey--center" id="centerBtn" aria-label="Pause / Démarrer"></button>
-      <button class="navkey navkey--right" data-dir="right" aria-label="Droite"></button>
-    </div>
-    <button class="navkey navkey--down" data-dir="down" aria-label="Bas"></button>
-    <button class="softkey softkey--right" id="soundBtn" aria-label="Activer/Couper le son"></button>
-  </div>
+  <button class="hud__btn" id="pauseBtn" aria-label="Pause">
+    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1.4"></rect><rect x="14" y="5" width="4" height="14" rx="1.4"></rect></svg>
+  </button>
 </div>
 
-<p class="tip">Flèches / ZQSD au clavier · glissez sur l'écran sur mobile · espace = pause</p>
+<!-- START / PAUSE / GAME OVER OVERLAY -->
+<div class="overlay" id="overlay">
+  <div class="panel" id="panel">
+    <div class="panel__glow"></div>
+    <h1 class="panel__title" id="panelTitle">NEON<span>SNAKE</span></h1>
+    <p class="panel__sub" id="panelSub">Glissez le doigt pour diriger le serpent.</p>
+
+    <div class="panel__stats" id="panelStats" hidden>
+      <div class="stat">
+        <span class="stat__value" id="finalScore">0</span>
+        <span class="stat__label">Score</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value" id="bestScore">0</span>
+        <span class="stat__label">Record</span>
+      </div>
+    </div>
+
+    <button class="play-btn" id="playBtn">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+      <span id="playBtnLabel">JOUER</span>
+    </button>
+
+    <div class="panel__hint">
+      <span>⬆︎⬅︎⬇︎➡︎ glissez</span>
+      <span>⎵ pause</span>
+    </div>
+  </div>
+</div>
 
 <script src="snake.js"></script>
 </body>
