@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Snake — Nokia Edition</title>
+<meta name="theme-color" content="#1c1c1c">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="snake.css">
+</head>
+<body>
+
+<a class="back-link" href="index.html">← Mon Planning</a>
+
+<div class="phone">
+  <div class="phone__brand">NOKIA</div>
+
+  <div class="phone__screen-bezel">
+    <div class="screen" id="screen">
+      <canvas id="game" width="384" height="224"></canvas>
+      <div class="screen__scanlines"></div>
+    </div>
+  </div>
+
+  <div class="phone__row phone__row--soft">
+    <span class="softlabel" id="softLeftLabel">Menu</span>
+    <span class="softlabel" id="softRightLabel">Son</span>
+  </div>
+
+  <div class="keypad">
+    <button class="softkey softkey--left" id="softLeftBtn" aria-label="Menu / Rejouer"></button>
+    <button class="navkey navkey--up" data-dir="up" aria-label="Haut"></button>
+    <div class="navkey-row">
+      <button class="navkey navkey--left" data-dir="left" aria-label="Gauche"></button>
+      <button class="navkey navkey--center" id="centerBtn" aria-label="Pause / Démarrer"></button>
+      <button class="navkey navkey--right" data-dir="right" aria-label="Droite"></button>
+    </div>
+    <button class="navkey navkey--down" data-dir="down" aria-label="Bas"></button>
+    <button class="softkey softkey--right" id="soundBtn" aria-label="Activer/Couper le son"></button>
+  </div>
+</div>
+
+<p class="tip">Flèches / ZQSD au clavier · glissez sur l'écran sur mobile · espace = pause</p>
+
+<script src="snake.js"></script>
+</body>
+</html>

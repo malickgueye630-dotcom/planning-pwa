@@ -1,4 +1,4 @@
-const CACHE_NAME = "mon-planning-v10";
+const CACHE_NAME = "mon-planning-v11";
 const ASSETS = [
   "./",
   "./index.html",
@@ -7,6 +7,9 @@ const ASSETS = [
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
+  "./snake.html",
+  "./snake.css",
+  "./snake.js",
 ];
 
 self.addEventListener("install", (event) => {
